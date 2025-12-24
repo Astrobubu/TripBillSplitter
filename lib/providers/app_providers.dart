@@ -473,3 +473,90 @@ final settlementsProvider = Provider<List<SettlementInfo>>((ref) {
     error: (_, __) => [],
   );
 });
+
+// -----------------------------------------------------------------------------
+// SMART SETTLEMENT (Who pays whom)
+// -----------------------------------------------------------------------------
+class SmartSettlement {
+  final String fromPersonId;
+  final String fromPersonName;
+  final String toPersonId;
+  final String toPersonName;
+  final double amount;
+  final bool isPaid;
+  final bool isAnonymous;
+
+  SmartSettlement({
+    required this.fromPersonId,
+    required this.fromPersonName,
+    required this.toPersonId,
+    required this.toPersonName,
+    required this.amount,
+    this.isPaid = false,
+    this.isAnonymous = false,
+  });
+}
+
+final smartSettlementsProvider = Provider<List<SmartSettlement>>((ref) {
+  final settlements = ref.watch(settlementsProvider);
+  final paymentsAsync = ref.watch(paymentsProvider);
+  
+  if (settlements.isEmpty) return [];
+  
+  final payments = paymentsAsync.value ?? [];
+  
+  // Separate creditors (positive balance) and debtors (negative balance)
+  List<SettlementInfo> creditors = settlements.where((s) => s.amount > 0.01).toList();
+  List<SettlementInfo> debtors = settlements.where((s) => s.amount < -0.01).toList();
+  
+  if (creditors.isEmpty || debtors.isEmpty) return [];
+  
+  // Create a copy of balances to work with
+  Map<String, double> creditBalances = {
+    for (var c in creditors) c.personId: c.amount
+  };
+  Map<String, double> debtBalances = {
+    for (var d in debtors) d.personId: d.amount.abs()
+  };
+  
+  List<SmartSettlement> transactions = [];
+  
+  // Match debtors to creditors (greedy approach)
+  for (var debtor in debtors) {
+    double remainingDebt = debtBalances[debtor.personId] ?? 0;
+    
+    for (var creditor in creditors) {
+      if (remainingDebt < 0.01) break;
+      
+      double availableCredit = creditBalances[creditor.personId] ?? 0;
+      if (availableCredit < 0.01) continue;
+      
+      double transferAmount = remainingDebt < availableCredit 
+          ? remainingDebt 
+          : availableCredit;
+      
+      // Check if this exact transaction has been paid
+      bool isPaid = payments.any((p) =>
+        p.fromPersonId == debtor.personId &&
+        p.toPersonId == creditor.personId &&
+        p.status == PaymentStatus.completed
+      );
+      
+      transactions.add(SmartSettlement(
+        fromPersonId: debtor.personId,
+        fromPersonName: debtor.personName,
+        toPersonId: creditor.personId,
+        toPersonName: creditor.personName,
+        amount: transferAmount,
+        isPaid: isPaid,
+        isAnonymous: debtor.isAnonymous,
+      ));
+      
+      remainingDebt -= transferAmount;
+      creditBalances[creditor.personId] = availableCredit - transferAmount;
+    }
+  }
+  
+  return transactions;
+});
+

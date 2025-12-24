@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../providers/app_providers.dart';
 import '../models/trip.dart';
 import 'bill_splitter_screen.dart';
+import 'settings_screen.dart';
 
 class TripsScreen extends ConsumerStatefulWidget {
   const TripsScreen({super.key});
@@ -23,48 +24,93 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
     super.dispose();
   }
 
-  void _showCreateTripDialog() {
+  void _showCreateTripDialog() async {
     _tripNameController.clear();
+    
+    // Get existing trips to generate next trip number
+    final trips = ref.read(tripsProvider).value ?? [];
+    final tripCount = trips.length + 1;
+    
     showDialog(
       context: context,
       builder: (context) {
-        final theme = Theme.of(context);
-        return AlertDialog(
-          title: const Text('Create New Trip'),
-          content: TextField(
-            controller: _tripNameController,
-            decoration: const InputDecoration(
-              labelText: 'Trip Name',
-              hintText: 'e.g., Tokyo 2024, Beach Weekend',
-              prefixIcon: Icon(Icons.luggage),
-            ),
-            autofocus: true,
-            textCapitalization: TextCapitalization.words,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final name = _tripNameController.text.trim();
-                if (name.isNotEmpty) {
-                  final trip = await ref.read(tripsProvider.notifier).createTrip(name);
-                  ref.read(currentTripIdProvider.notifier).state = trip.id;
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const BillSplitterScreen(),
+        String selectedCurrency = '\$';
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Create New Trip'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: _tripNameController,
+                      decoration: InputDecoration(
+                        labelText: 'Trip Name (optional)',
+                        hintText: 'Trip $tripCount',
+                        prefixIcon: const Icon(Icons.luggage),
                       ),
+                      autofocus: true,
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedCurrency,
+                      decoration: const InputDecoration(
+                        labelText: 'Currency',
+                        prefixIcon: Icon(Icons.attach_money),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: '\$', child: Text('\$ - US Dollar')),
+                        DropdownMenuItem(value: '€', child: Text('€ - Euro')),
+                        DropdownMenuItem(value: '£', child: Text('£ - British Pound')),
+                        DropdownMenuItem(value: 'AED', child: Text('AED - UAE Dirham')),
+                        DropdownMenuItem(value: '¥', child: Text('¥ - Japanese Yen')),
+                        DropdownMenuItem(value: '₹', child: Text('₹ - Indian Rupee')),
+                        DropdownMenuItem(value: 'CHF', child: Text('CHF - Swiss Franc')),
+                        DropdownMenuItem(value: 'AUD', child: Text('AUD - Australian Dollar')),
+                        DropdownMenuItem(value: 'CAD', child: Text('CAD - Canadian Dollar')),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          selectedCurrency = value!;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final name = _tripNameController.text.trim().isEmpty 
+                        ? 'Trip $tripCount' 
+                        : _tripNameController.text.trim();
+                    final trip = await ref.read(tripsProvider.notifier).createTrip(
+                      name,
+                      currency: selectedCurrency,
+                      totalParticipants: 1, // Will auto-update when people are added
                     );
-                  }
-                }
-              },
-              child: const Text('Create'),
-            ),
-          ],
+                    ref.read(currentTripIdProvider.notifier).state = trip.id;
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const BillSplitterScreen(),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Create'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -96,6 +142,15 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
               });
             },
             tooltip: _showArchived ? 'Hide Archived' : 'Show Archived',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
+            tooltip: 'Settings',
           ),
         ],
       ),

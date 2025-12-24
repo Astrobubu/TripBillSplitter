@@ -61,7 +61,7 @@ class ShareService {
         child: repaintBoundary,
       ),
       configuration: ViewConfiguration(
-        size: size,
+        logicalConstraints: BoxConstraints.tight(size),
         devicePixelRatio: 1.0,
       ),
     );

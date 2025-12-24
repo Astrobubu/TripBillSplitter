@@ -8,6 +8,7 @@ import '../services/share_service.dart';
 import 'history_screen.dart';
 import 'analytics_screen.dart';
 import 'payments_screen.dart';
+import 'participants_screen.dart';
 
 class BillSplitterScreen extends ConsumerStatefulWidget {
   const BillSplitterScreen({super.key});
@@ -42,6 +43,67 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
             );
       }
     }
+  }
+
+  void _showCurrencySelector() async {
+    final currentTrip = await ref.read(currentTripProvider.future);
+    if (currentTrip == null) return;
+
+    final selectedCurrency = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Currency'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _currencyOption('\$', 'US Dollar'),
+            _currencyOption('€', 'Euro'),
+            _currencyOption('£', 'British Pound'),
+            _currencyOption('AED', 'UAE Dirham'),
+            _currencyOption('¥', 'Japanese Yen'),
+            _currencyOption('₹', 'Indian Rupee'),
+            _currencyOption('CHF', 'Swiss Franc'),
+            _currencyOption('AUD', 'Australian Dollar'),
+            _currencyOption('CAD', 'Canadian Dollar'),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedCurrency != null && mounted) {
+      await ref.read(tripsProvider.notifier).updateTrip(
+        currentTrip.copyWith(currency: selectedCurrency),
+      );
+    }
+  }
+
+  Widget _currencyOption(String symbol, String name) {
+    return ListTile(
+      title: Text('$symbol - $name'),
+      onTap: () => Navigator.of(context).pop(symbol),
+    );
+  }
+
+  Widget _navButton({required IconData icon, required String label, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(height: 4),
+            Text(label, style: const TextStyle(fontSize: 10)),
+          ],
+        ),
+      ),
+    );
   }
 
   void _startEditing(Expense expense, String payerName) {
@@ -111,12 +173,16 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
 
   void _shareAsImage() async {
     final currentTrip = await ref.read(currentTripProvider.future);
-    final expenses = await ref.read(expensesProvider.future);
-    final people = await ref.read(peopleProvider.future);
+    final expensesAsync = ref.read(expensesProvider);
+    final peopleAsync = ref.read(peopleProvider);
     final settlements = ref.read(settlementsProvider);
     final total = ref.read(totalExpenseProvider);
 
     if (currentTrip == null) return;
+
+    // Extract data from AsyncValue
+    final expenses = expensesAsync.value ?? [];
+    final people = peopleAsync.value ?? [];
 
     try {
       await ShareService.shareAsImage(
@@ -153,41 +219,85 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
           );
         }
 
-        // Update participants controller when trip loads
-        if (_participantsController.text.isEmpty) {
-          _participantsController.text = currentTrip.totalParticipants.toString();
-        }
+        // Sync participants controller with actual count
+        peopleAsync.whenData((people) {
+          final effectiveCount = people.length > currentTrip.totalParticipants 
+              ? people.length 
+              : currentTrip.totalParticipants;
+          final controllerValue = int.tryParse(_participantsController.text) ?? 0;
+          if (controllerValue != effectiveCount) {
+            _participantsController.text = effectiveCount.toString();
+            // Also update trip if needed
+            if (people.length > currentTrip.totalParticipants) {
+              ref.read(tripsProvider.notifier).updateTrip(
+                currentTrip.copyWith(totalParticipants: people.length),
+              );
+            }
+          }
+        });
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(currentTrip.name),
+            title: GestureDetector(
+              onTap: () async {
+                final controller = TextEditingController(text: currentTrip.name);
+                final newName = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Edit Trip Name'),
+                    content: TextField(
+                      controller: controller,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'Trip name',
+                        hintStyle: TextStyle(color: Colors.grey[400]),
+                      ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
+                );
+                if (newName != null && newName.isNotEmpty && mounted) {
+                  await ref.read(tripsProvider.notifier).updateTrip(
+                    currentTrip.copyWith(name: newName),
+                  );
+                }
+              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(currentTrip.name),
+                  const SizedBox(width: 4),
+                  Icon(Icons.edit, size: 16, color: Colors.grey[400]),
+                ],
+              ),
+            ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.history),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => const HistoryScreen()),
+                icon: const Icon(Icons.archive_outlined),
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Archive Trip?'),
+                      content: const Text('This will move the trip to archived. You can view it from the trips list.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Archive')),
+                      ],
+                    ),
                   );
+                  if (confirm == true && mounted) {
+                    await ref.read(tripsProvider.notifier).archiveTrip(currentTrip.id);
+                    if (mounted) Navigator.of(context).pop();
+                  }
                 },
-                tooltip: 'History',
-              ),
-              IconButton(
-                icon: const Icon(Icons.analytics),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
-                  );
-                },
-                tooltip: 'Analytics',
-              ),
-              IconButton(
-                icon: const Icon(Icons.payment),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => const PaymentsScreen()),
-                  );
-                },
-                tooltip: 'Payments',
+                tooltip: 'Archive Trip',
               ),
               IconButton(
                 icon: const Icon(Icons.share),
@@ -223,11 +333,16 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                       const Icon(Icons.groups, color: Colors.black),
                                       const SizedBox(width: 12),
                                       Expanded(
-                                        child: Text(
-                                          'Total People:',
-                                          style: theme.textTheme.titleMedium?.copyWith(
-                                            color: Colors.black,
-                                            fontWeight: FontWeight.w600,
+                                        child: GestureDetector(
+                                          onTap: () => Navigator.of(context).push(
+                                            MaterialPageRoute(builder: (_) => const ParticipantsScreen()),
+                                          ),
+                                          child: Text(
+                                            'Total People:',
+                                            style: theme.textTheme.titleMedium?.copyWith(
+                                              color: Colors.black,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -262,19 +377,23 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 flex: 1,
-                                child: Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.primary,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      currentTrip.currency,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black,
-                                        fontSize: 18,
+                                child: InkWell(
+                                  onTap: _showCurrencySelector,
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.primary,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        currentTrip.currency,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.black,
+                                          fontSize: 18,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -283,6 +402,51 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                             ],
                           ),
                         ).animate().fadeIn(delay: 200.ms).slideX(),
+                        const SizedBox(height: 12),
+                        // Navigation Buttons Row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _navButton(
+                                icon: Icons.group,
+                                label: 'Participants',
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const ParticipantsScreen()),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _navButton(
+                                icon: Icons.payment,
+                                label: 'Payments',
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const PaymentsScreen()),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _navButton(
+                                icon: Icons.history,
+                                label: 'History',
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const HistoryScreen()),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _navButton(
+                                icon: Icons.analytics,
+                                label: 'Analytics',
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 16),
                         // Add Expense Header
                         Row(
@@ -620,7 +784,13 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '${currentTrip.currency}${(total / (currentTrip.totalParticipants > 0 ? currentTrip.totalParticipants : 1)).toStringAsFixed(2)}',
+                                    () {
+                                      final effectiveCount = peopleAsync.value != null && peopleAsync.value!.length > currentTrip.totalParticipants
+                                          ? peopleAsync.value!.length
+                                          : currentTrip.totalParticipants;
+                                      final perPerson = total / (effectiveCount > 0 ? effectiveCount : 1);
+                                      return '${currentTrip.currency}${perPerson.toStringAsFixed(2)}';
+                                    }(),
                                     style: const TextStyle(
                                       color: Colors.black,
                                       fontSize: 28,
@@ -632,7 +802,10 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                             ],
                           ),
                         ).animate(target: total > 0 ? 1 : 0).fadeIn().scale(),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 24),
+                        // Settlement Section Header
+                        Text('Who Owes Who', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 12),
                         if (settlements.isEmpty)
                           Center(
                             child: Padding(
@@ -644,51 +817,63 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                             ),
                           )
                         else
-                          Column(
-                            children: settlements.map((s) {
-                              final isReceiving = s.amount > 0;
-                              if (s.amount.abs() < 0.01) return const SizedBox.shrink();
-                              Color color = isReceiving
-                                  ? const Color(0xFF22c55e)
-                                  : const Color(0xFFef4444);
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: ListTile(
-                                  contentPadding:
-                                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                                  leading: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: color.withValues(alpha: 0.1),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      isReceiving ? Icons.arrow_downward : Icons.arrow_upward,
-                                      color: color,
-                                      size: 20,
+                          Builder(
+                            builder: (context) {
+                              final smartSettlements = ref.watch(smartSettlementsProvider);
+                              
+                              if (smartSettlements.isEmpty) {
+                                return Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Text(
+                                      'All settled up! ✓',
+                                      style: theme.textTheme.bodyMedium?.copyWith(color: Colors.green),
                                     ),
                                   ),
-                                  title: Text(
-                                    s.personName,
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  subtitle: Text(
-                                    isReceiving ? 'Gets back' : 'Needs to pay',
-                                    style: TextStyle(color: color, fontWeight: FontWeight.w500),
-                                  ),
-                                  trailing: Text(
-                                    '${currentTrip.currency}${s.amount.abs().toStringAsFixed(2)}',
-                                    style: theme.textTheme.titleLarge?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: color,
+                                );
+                              }
+                              
+                              return Column(
+                                children: smartSettlements.map((s) {
+                                  final color = s.isPaid ? Colors.green : const Color(0xFFef4444);
+                                  
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                  ),
-                                ),
-                              ).animate().fadeIn().slideX();
-                            }).toList(),
+                                    child: ListTile(
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                      leading: CircleAvatar(
+                                        backgroundColor: color.withOpacity(0.2),
+                                        radius: 16,
+                                        child: Icon(
+                                          s.isPaid ? Icons.check : Icons.arrow_forward,
+                                          color: color,
+                                          size: 16,
+                                        ),
+                                      ),
+                                      title: Text(
+                                        '${s.fromPersonName} → ${s.toPersonName}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          decoration: s.isPaid ? TextDecoration.lineThrough : null,
+                                        ),
+                                      ),
+                                      trailing: Text(
+                                        '${currentTrip.currency}${s.amount.toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: color,
+                                          decoration: s.isPaid ? TextDecoration.lineThrough : null,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              );
+                            },
                           ),
                       ],
                     ),
