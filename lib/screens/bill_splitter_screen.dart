@@ -38,9 +38,22 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
     if (count != null && count > 0) {
       final currentTrip = await ref.read(currentTripProvider.future);
       if (currentTrip != null) {
+        // Update trip participant count
         await ref.read(tripsProvider.notifier).updateTrip(
               currentTrip.copyWith(totalParticipants: count),
             );
+        
+        // Auto-create generic participants if needed
+        final peopleAsync = ref.read(peopleProvider);
+        peopleAsync.whenData((people) async {
+          final currentCount = people.length;
+          if (count > currentCount) {
+            // Add more generic people
+            for (int i = currentCount + 1; i <= count; i++) {
+              await ref.read(peopleProvider.notifier).addPerson('Person $i');
+            }
+          }
+        });
       }
     }
   }
