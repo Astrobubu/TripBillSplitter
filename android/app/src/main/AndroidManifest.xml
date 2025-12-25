@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="trip_bill_splitter"
+        android:label="Trip Splitter"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

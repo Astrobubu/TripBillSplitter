@@ -18,13 +18,24 @@ class SettingsScreen extends ConsumerWidget {
           _SectionHeader(title: 'About'),
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Trip Bill Splitter'),
+            title: Text('Trip Splitter'),
             subtitle: Text('Version 1.0.0'),
           ),
           const ListTile(
-            leading: Icon(Icons.code),
+            leading: Icon(Icons.person_outline),
             title: Text('Developer'),
             subtitle: Text('Ahmad'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.code),
+            title: const Text('Open Source'),
+            subtitle: const Text('github.com/Astrobubu/TripBillSplitter'),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('github.com/Astrobubu/TripBillSplitter')),
+              );
+            },
           ),
           const Divider(),
           
