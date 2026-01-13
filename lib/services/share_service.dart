@@ -123,8 +123,8 @@ class _TripSummaryImage extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Colors.blue.shade700,
-            Colors.blue.shade900,
+            Color(trip.colorValue),
+            Color(trip.colorValue).withOpacity(0.7),
           ],
         ),
       ),
@@ -138,11 +138,11 @@ class _TripSummaryImage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(
-                  Icons.luggage,
+                child: Icon(
+                  IconData(trip.iconCodePoint, fontFamily: 'MaterialIcons'),
                   color: Colors.white,
                   size: 48,
                 ),

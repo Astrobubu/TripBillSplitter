@@ -34,13 +34,21 @@ class TripsNotifier extends StateNotifier<AsyncValue<List<Trip>>> {
     }
   }
 
-  Future<Trip> createTrip(String name, {String currency = '\$', int totalParticipants = 2}) async {
+  Future<Trip> createTrip(
+    String name, {
+    String currency = '\$',
+    int totalParticipants = 2,
+    int? iconCodePoint,
+    int? colorValue,
+  }) async {
     final trip = Trip(
       id: const Uuid().v4(),
       name: name,
       createdAt: DateTime.now(),
       currency: currency,
       totalParticipants: totalParticipants,
+      iconCodePoint: iconCodePoint ?? 0xe540,
+      colorValue: colorValue ?? 0xFF2196F3,
     );
 
     await DatabaseService.instance.createTrip(trip);

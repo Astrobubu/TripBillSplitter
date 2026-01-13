@@ -24,9 +24,17 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE trips ADD COLUMN iconCodePoint INTEGER DEFAULT 58688');
+      await db.execute('ALTER TABLE trips ADD COLUMN colorValue INTEGER DEFAULT 4280391411');
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -44,7 +52,9 @@ class DatabaseService {
         updatedAt TEXT,
         currency $textType,
         totalParticipants $intType,
-        isArchived $intType
+        isArchived $intType,
+        iconCodePoint $intType,
+        colorValue $intType
       )
     ''');
 

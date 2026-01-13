@@ -6,6 +6,8 @@ class Trip {
   final String currency;
   final int totalParticipants;
   final bool isArchived;
+  final int iconCodePoint;
+  final int colorValue;
 
   Trip({
     required this.id,
@@ -15,6 +17,8 @@ class Trip {
     this.currency = '\$',
     this.totalParticipants = 2,
     this.isArchived = false,
+    this.iconCodePoint = 0xe540, // Icons.luggage
+    this.colorValue = 0xFF2196F3, // Blue
   });
 
   Map<String, dynamic> toMap() {
@@ -26,6 +30,8 @@ class Trip {
       'currency': currency,
       'totalParticipants': totalParticipants,
       'isArchived': isArchived ? 1 : 0,
+      'iconCodePoint': iconCodePoint,
+      'colorValue': colorValue,
     };
   }
 
@@ -38,6 +44,8 @@ class Trip {
       currency: map['currency'] as String? ?? '\$',
       totalParticipants: map['totalParticipants'] as int? ?? 2,
       isArchived: (map['isArchived'] as int?) == 1,
+      iconCodePoint: map['iconCodePoint'] as int? ?? 0xe540,
+      colorValue: map['colorValue'] as int? ?? 0xFF2196F3,
     );
   }
 
@@ -49,6 +57,8 @@ class Trip {
     String? currency,
     int? totalParticipants,
     bool? isArchived,
+    int? iconCodePoint,
+    int? colorValue,
   }) {
     return Trip(
       id: id ?? this.id,
@@ -58,6 +68,8 @@ class Trip {
       currency: currency ?? this.currency,
       totalParticipants: totalParticipants ?? this.totalParticipants,
       isArchived: isArchived ?? this.isArchived,
+      iconCodePoint: iconCodePoint ?? this.iconCodePoint,
+      colorValue: colorValue ?? this.colorValue,
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_providers.dart';
+import '../providers/settings_provider.dart';
 import '../models/trip.dart';
 import 'bill_splitter_screen.dart';
 import 'settings_screen.dart';
@@ -15,115 +16,7 @@ class TripsScreen extends ConsumerStatefulWidget {
 }
 
 class _TripsScreenState extends ConsumerState<TripsScreen> {
-  final _tripNameController = TextEditingController();
   bool _showArchived = false;
-
-  @override
-  void dispose() {
-    _tripNameController.dispose();
-    super.dispose();
-  }
-
-  void _showCreateTripDialog() async {
-    _tripNameController.clear();
-    
-    // Get existing trips to generate next trip number
-    final trips = ref.read(tripsProvider).value ?? [];
-    final tripCount = trips.length + 1;
-    
-    showDialog(
-      context: context,
-      builder: (context) {
-        String selectedCurrency = '\$';
-
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Create New Trip'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: _tripNameController,
-                      decoration: InputDecoration(
-                        labelText: 'Trip Name (optional)',
-                        hintText: 'Trip $tripCount',
-                        prefixIcon: const Icon(Icons.luggage),
-                      ),
-                      autofocus: true,
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: selectedCurrency,
-                      decoration: const InputDecoration(
-                        labelText: 'Currency',
-                        prefixIcon: Icon(Icons.attach_money),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: '\$', child: Text('\$ - US Dollar')),
-                        DropdownMenuItem(value: '€', child: Text('€ - Euro')),
-                        DropdownMenuItem(value: '£', child: Text('£ - British Pound')),
-                        DropdownMenuItem(value: 'AED', child: Text('AED - UAE Dirham')),
-                        DropdownMenuItem(value: '¥', child: Text('¥ - Japanese Yen')),
-                        DropdownMenuItem(value: '₹', child: Text('₹ - Indian Rupee')),
-                        DropdownMenuItem(value: 'CHF', child: Text('CHF - Swiss Franc')),
-                        DropdownMenuItem(value: 'AUD', child: Text('AUD - Australian Dollar')),
-                        DropdownMenuItem(value: 'CAD', child: Text('CAD - Canadian Dollar')),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          selectedCurrency = value!;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    final name = _tripNameController.text.trim().isEmpty 
-                        ? 'Trip $tripCount' 
-                        : _tripNameController.text.trim();
-                    final trip = await ref.read(tripsProvider.notifier).createTrip(
-                      name,
-                      currency: selectedCurrency,
-                      totalParticipants: 1, // Will auto-update when people are added
-                    );
-                    ref.read(currentTripIdProvider.notifier).state = trip.id;
-                    if (mounted) {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const BillSplitterScreen(),
-                        ),
-                      );
-                    }
-                  },
-                  child: const Text('Create'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _openTrip(Trip trip) {
-    ref.read(currentTripIdProvider.notifier).state = trip.id;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const BillSplitterScreen(),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -135,6 +28,15 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
         title: const Text('My Trips'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
+            tooltip: 'Settings',
+          ),
+          IconButton(
             icon: Icon(_showArchived ? Icons.unarchive : Icons.archive),
             onPressed: () {
               setState(() {
@@ -142,15 +44,6 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
               });
             },
             tooltip: _showArchived ? 'Hide Archived' : 'Show Archived',
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-            },
-            tooltip: 'Settings',
           ),
         ],
       ),
@@ -183,7 +76,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                   if (!_showArchived) ...[
                     const SizedBox(height: 24),
                     FilledButton.icon(
-                      onPressed: _showCreateTripDialog,
+                      onPressed: () => _showCreateTripDialog(context),
                       icon: const Icon(Icons.add),
                       label: const Text('Create Trip'),
                     ),
@@ -204,6 +97,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                 margin: const EdgeInsets.only(bottom: 12),
                 child: InkWell(
                   onTap: () => _openTrip(trip),
+                  onLongPress: () => _showTripOptions(context, trip),
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -215,12 +109,13 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.primaryContainer,
+                                color: Color(trip.colorValue).withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                Icons.luggage,
-                                color: theme.colorScheme.primary,
+                                IconData(trip.iconCodePoint, fontFamily: 'MaterialIcons'),
+                                color: Color(trip.colorValue),
+                                size: 28,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -286,11 +181,458 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
       ),
       floatingActionButton: !_showArchived
           ? FloatingActionButton.extended(
-              onPressed: _showCreateTripDialog,
+              onPressed: () => _showCreateTripDialog(context),
               icon: const Icon(Icons.add),
               label: const Text('New Trip'),
             )
           : null,
+    );
+  }
+
+  void _showCreateTripDialog(BuildContext context) {
+    final nameController = TextEditingController();
+    int selectedIconCode = Icons.luggage.codePoint;
+    int selectedColor = Colors.blue.value;
+
+    final defaultCurrencyAsync = ref.read(defaultCurrencyProvider);
+    final defaultParticipants = ref.read(defaultParticipantsProvider);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Create New Trip'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Trip Name',
+                        hintText: 'e.g., Tokyo 2024, Beach Weekend',
+                        prefixIcon: Icon(Icons.edit),
+                      ),
+                      autofocus: true,
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final icon = await _showIconPicker(context);
+                              if (icon != null) {
+                                setState(() {
+                                  selectedIconCode = icon.codePoint;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    IconData(selectedIconCode, fontFamily: 'MaterialIcons'),
+                                    size: 32,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text('Choose Icon', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final color = await _showColorPicker(context, Color(selectedColor));
+                              if (color != null) {
+                                setState(() {
+                                  selectedColor = color.value;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: Color(selectedColor),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text('Choose Color', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final name = nameController.text.trim();
+                    if (name.isNotEmpty) {
+                      final currency = defaultCurrencyAsync.value ?? 'AED';
+                      final trip = await ref.read(tripsProvider.notifier).createTrip(
+                            name,
+                            currency: currency,
+                            totalParticipants: defaultParticipants,
+                            iconCodePoint: selectedIconCode,
+                            colorValue: selectedColor,
+                          );
+                      ref.read(currentTripIdProvider.notifier).state = trip.id;
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const BillSplitterScreen(),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Create'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<IconData?> _showIconPicker(BuildContext context) async {
+    final icons = [
+      Icons.luggage,
+      Icons.flight,
+      Icons.beach_access,
+      Icons.hiking,
+      Icons.directions_car,
+      Icons.hotel,
+      Icons.restaurant,
+      Icons.camera_alt,
+      Icons.sailing,
+      Icons.snowboarding,
+      Icons.landscape,
+      Icons.park,
+      Icons.castle,
+      Icons.mosque,
+      Icons.temple_buddhist,
+      Icons.festival,
+    ];
+
+    return await showDialog<IconData>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Choose Icon'),
+          content: SizedBox(
+            width: 300,
+            child: GridView.builder(
+              shrinkWrap: true,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: icons.length,
+              itemBuilder: (context, index) {
+                return InkWell(
+                  onTap: () => Navigator.of(context).pop(icons[index]),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(icons[index], size: 32),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<Color?> _showColorPicker(BuildContext context, Color currentColor) async {
+    final colors = [
+      Colors.blue,
+      Colors.red,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.pink,
+      Colors.teal,
+      Colors.indigo,
+      Colors.amber,
+      Colors.cyan,
+      Colors.deepOrange,
+      Colors.lime,
+    ];
+
+    return await showDialog<Color>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Choose Color'),
+          content: SizedBox(
+            width: 300,
+            child: GridView.builder(
+              shrinkWrap: true,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: colors.length,
+              itemBuilder: (context, index) {
+                return InkWell(
+                  onTap: () => Navigator.of(context).pop(colors[index]),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: colors[index],
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.grey.shade300,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showTripOptions(BuildContext context, Trip trip) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Edit Trip'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditTripDialog(context, trip);
+                },
+              ),
+              ListTile(
+                leading: Icon(trip.isArchived ? Icons.unarchive : Icons.archive),
+                title: Text(trip.isArchived ? 'Unarchive Trip' : 'Archive Trip'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await ref.read(tripsProvider.notifier).archiveTrip(trip.id);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Delete Trip', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmDelete(context, trip);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEditTripDialog(BuildContext context, Trip trip) {
+    final nameController = TextEditingController(text: trip.name);
+    int selectedIconCode = trip.iconCodePoint;
+    int selectedColor = trip.colorValue;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Edit Trip'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Trip Name',
+                        prefixIcon: Icon(Icons.edit),
+                      ),
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final icon = await _showIconPicker(context);
+                              if (icon != null) {
+                                setState(() {
+                                  selectedIconCode = icon.codePoint;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    IconData(selectedIconCode, fontFamily: 'MaterialIcons'),
+                                    size: 32,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text('Change Icon', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final color = await _showColorPicker(context, Color(selectedColor));
+                              if (color != null) {
+                                setState(() {
+                                  selectedColor = color.value;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: Color(selectedColor),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text('Change Color', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final name = nameController.text.trim();
+                    if (name.isNotEmpty) {
+                      await ref.read(tripsProvider.notifier).updateTrip(
+                            trip.copyWith(
+                              name: name,
+                              iconCodePoint: selectedIconCode,
+                              colorValue: selectedColor,
+                            ),
+                          );
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                      }
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _confirmDelete(BuildContext context, Trip trip) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete Trip'),
+          content: Text('Are you sure you want to delete "${trip.name}"? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                await ref.read(tripsProvider.notifier).deleteTrip(trip.id);
+                if (mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _openTrip(Trip trip) {
+    ref.read(currentTripIdProvider.notifier).state = trip.id;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const BillSplitterScreen(),
+      ),
     );
   }
 }
