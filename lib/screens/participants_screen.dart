@@ -185,7 +185,7 @@ class _ParticipantsScreenState extends ConsumerState<ParticipantsScreen> {
                             },
                           ),
                         ),
-                      ).animate().fadeIn().slideX(begin: 0.1);
+                      );
                     },
                   );
                 },

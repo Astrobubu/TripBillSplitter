@@ -1,13 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../providers/settings_provider.dart';
 import '../services/settings_service.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  String _appVersion = '1.0.0';
+  bool _checkingForUpdates = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      setState(() {
+        _appVersion = packageInfo.version;
+      });
+    } catch (e) {
+      // Keep default version
+    }
+  }
+
+  Future<void> _checkForUpdates() async {
+    setState(() {
+      _checkingForUpdates = true;
+    });
+
+    // Simulate checking for updates
+    await Future.delayed(const Duration(seconds: 2));
+
+    setState(() {
+      _checkingForUpdates = false;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are on the latest version!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _launchURL(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open $url')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final themeMode = ref.watch(themeModeProvider);
     final defaultCurrencyAsync = ref.watch(defaultCurrencyProvider);
@@ -19,17 +81,10 @@ class SettingsScreen extends ConsumerWidget {
       ),
       body: ListView(
         children: [
+          const SizedBox(height: 8),
+
           // Appearance Section
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              'Appearance',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+          _SectionHeader(title: 'Appearance'),
           ListTile(
             leading: const Icon(Icons.palette),
             title: const Text('Theme'),
@@ -42,16 +97,7 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
 
           // Defaults Section
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              'Defaults',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+          _SectionHeader(title: 'Defaults'),
           defaultCurrencyAsync.when(
             data: (currency) => ListTile(
               leading: const Icon(Icons.attach_money),
@@ -85,26 +131,97 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
 
           // About Section
-          Padding(
-            padding: const EdgeInsets.all(16.0),
+          _SectionHeader(title: 'About'),
+          const ListTile(
+            leading: Icon(Icons.info_outline),
+            title: Text('Trip Splitter'),
+            subtitle: Text('Split expenses easily on trips'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.tag),
+            title: const Text('Version'),
+            subtitle: Text(_appVersion),
+          ),
+          const ListTile(
+            leading: Icon(Icons.person_outline),
+            title: Text('Developer'),
+            subtitle: Text('Ahmad'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.code),
+            title: const Text('Open Source'),
+            subtitle: const Text('View on GitHub'),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: () {
+              _launchURL('https://github.com/Astrobubu/TripBillSplitter');
+            },
+          ),
+          const Divider(),
+
+          // Support Section
+          _SectionHeader(title: 'Support'),
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('Report a Bug'),
+            subtitle: const Text('Help us improve the app'),
+            onTap: () {
+              _launchURL('https://github.com/Astrobubu/TripBillSplitter/issues');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.star_outline),
+            title: const Text('Rate the App'),
+            subtitle: const Text('Share your feedback'),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Coming soon on Play Store!')),
+              );
+            },
+          ),
+          const Divider(),
+
+          // App Info Section
+          _SectionHeader(title: 'App Info'),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('How It Works'),
+            subtitle: const Text('Learn about the app'),
+            onTap: () => _showHowItWorksDialog(context),
+          ),
+          const ListTile(
+            leading: Icon(Icons.privacy_tip_outlined),
+            title: Text('Privacy Policy'),
+            subtitle: Text('Your data stays on your device'),
+          ),
+          const Divider(),
+
+          // Updates Section
+          _SectionHeader(title: 'Updates'),
+          ListTile(
+            leading: _checkingForUpdates
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.update),
+            title: const Text('Check for Updates'),
+            subtitle: Text(_checkingForUpdates
+                ? 'Checking...'
+                : 'Currently on version $_appVersion'),
+            enabled: !_checkingForUpdates,
+            onTap: _checkingForUpdates ? null : _checkForUpdates,
+          ),
+          const SizedBox(height: 32),
+
+          // Footer
+          Center(
             child: Text(
-              'About',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
+              'Made with ❤️ for easy bill splitting',
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
             ),
           ),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('Version'),
-            subtitle: const Text('1.0.0'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.description),
-            title: const Text('Trip Bill Splitter'),
-            subtitle: const Text('Split expenses with friends on trips'),
-          ),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -156,21 +273,23 @@ class SettingsScreen extends ConsumerWidget {
       builder: (context) {
         return AlertDialog(
           title: const Text('Choose Default Currency'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: SettingsService.availableCurrencies.map((currency) {
-              return RadioListTile<String>(
-                title: Text(currency),
-                value: currency,
-                groupValue: currentCurrency,
-                onChanged: (value) {
-                  if (value != null) {
-                    ref.read(defaultCurrencyProvider.notifier).setDefaultCurrency(value);
-                    Navigator.of(context).pop();
-                  }
-                },
-              );
-            }).toList(),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: SettingsService.availableCurrencies.map((currency) {
+                return RadioListTile<String>(
+                  title: Text(currency),
+                  value: currency,
+                  groupValue: currentCurrency,
+                  onChanged: (value) {
+                    if (value != null) {
+                      ref.read(defaultCurrencyProvider.notifier).setDefaultCurrency(value);
+                      Navigator.of(context).pop();
+                    }
+                  },
+                );
+              }).toList(),
+            ),
           ),
         );
       },
@@ -211,6 +330,57 @@ class SettingsScreen extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+
+  void _showHowItWorksDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('How It Works'),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('1. Create a Trip', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Start by creating a trip with your preferred currency and customize it with icons and colors.\n'),
+              Text('2. Add Participants', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Add everyone who is part of the trip.\n'),
+              Text('3. Record Expenses', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Each time someone pays, record who paid and how much.\n'),
+              Text('4. View Settlement', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('See exactly who owes who and how much to settle up easily!'),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it!'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
     );
   }
 }

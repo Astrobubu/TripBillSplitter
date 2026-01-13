@@ -232,22 +232,12 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
           );
         }
 
-        // Sync participants controller with actual count
-        peopleAsync.whenData((people) {
-          final effectiveCount = people.length > currentTrip.totalParticipants 
-              ? people.length 
-              : currentTrip.totalParticipants;
-          final controllerValue = int.tryParse(_participantsController.text) ?? 0;
-          if (controllerValue != effectiveCount) {
-            _participantsController.text = effectiveCount.toString();
-            // Also update trip if needed
-            if (people.length > currentTrip.totalParticipants) {
-              ref.read(tripsProvider.notifier).updateTrip(
-                currentTrip.copyWith(totalParticipants: people.length),
-              );
-            }
-          }
-        });
+        // Sync participants controller display with trip's totalParticipants
+        // Do NOT auto-update totalParticipants when adding named participants
+        final controllerValue = int.tryParse(_participantsController.text) ?? 0;
+        if (controllerValue != currentTrip.totalParticipants) {
+          _participantsController.text = currentTrip.totalParticipants.toString();
+        }
 
         return Scaffold(
           appBar: AppBar(
@@ -414,7 +404,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                               ),
                             ],
                           ),
-                        ).animate().fadeIn(delay: 200.ms).slideX(),
+                        ),
                         const SizedBox(height: 12),
                         // Navigation Buttons Row
                         Row(
@@ -615,7 +605,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                               ],
                             ),
                           ),
-                        ).animate().fadeIn(delay: 300.ms).moveY(begin: 20, end: 0),
+                        ),
                         const SizedBox(height: 16),
                       ],
                     ),
@@ -723,7 +713,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                       ),
                                     ),
                                   ),
-                                ).animate().fadeIn().slideX(begin: 0.2, end: 0);
+                                );
                               },
                               loading: () => const SizedBox.shrink(),
                               error: (_, __) => const SizedBox.shrink(),
@@ -798,9 +788,8 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                   const SizedBox(height: 4),
                                   Text(
                                     () {
-                                      final effectiveCount = peopleAsync.value != null && peopleAsync.value!.length > currentTrip.totalParticipants
-                                          ? peopleAsync.value!.length
-                                          : currentTrip.totalParticipants;
+                                      // Always use trip's totalParticipants
+                                      final effectiveCount = currentTrip.totalParticipants;
                                       final perPerson = total / (effectiveCount > 0 ? effectiveCount : 1);
                                       return '${currentTrip.currency}${perPerson.toStringAsFixed(2)}';
                                     }(),

@@ -60,7 +60,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                     _showArchived ? Icons.archive_outlined : Icons.luggage_outlined,
                     size: 80,
                     color: Colors.grey,
-                  ).animate().scale(),
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     _showArchived ? 'No archived trips' : 'No trips yet',
@@ -163,7 +163,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                     ),
                   ),
                 ),
-              ).animate().fadeIn(delay: (50 * index).ms).slideX();
+              );
             },
           );
         },
@@ -234,7 +234,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey),
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Column(
@@ -264,7 +264,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey),
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Column(
@@ -367,7 +367,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                   onTap: () => Navigator.of(context).pop(icons[index]),
                   child: Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(icons[index], size: 32),
@@ -419,10 +419,6 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                     decoration: BoxDecoration(
                       color: colors[index],
                       shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.grey.shade300,
-                        width: 2,
-                      ),
                     ),
                   ),
                 );
@@ -513,7 +509,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey),
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Column(
@@ -543,7 +539,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey),
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Column(

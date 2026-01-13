@@ -89,7 +89,7 @@ class HistoryScreen extends ConsumerWidget {
                     Icons.history,
                     size: 80,
                     color: Colors.grey,
-                  ).animate().scale(),
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     'No history yet',
@@ -153,7 +153,7 @@ class HistoryScreen extends ConsumerWidget {
                         title: Text(log.description),
                         subtitle: Text(timeFormat.format(log.timestamp)),
                       ),
-                    ).animate().fadeIn().slideX();
+                    );
                   }),
                   const SizedBox(height: 8),
                 ],

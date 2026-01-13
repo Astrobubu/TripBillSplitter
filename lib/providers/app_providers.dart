@@ -425,9 +425,8 @@ final settlementsProvider = Provider<List<SettlementInfo>>((ref) {
           data: (trip) {
             if (trip == null || total == 0 || trip.totalParticipants == 0) return [];
 
-            final effectiveCount = trip.totalParticipants < people.length
-                ? people.length
-                : trip.totalParticipants;
+            // Always use the trip's totalParticipants, never auto-increase it
+            final effectiveCount = trip.totalParticipants;
             final average = total / effectiveCount;
 
             List<SettlementInfo> results = [];
