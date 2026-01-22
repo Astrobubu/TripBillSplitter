@@ -141,6 +141,7 @@ class PeopleNotifier extends StateNotifier<AsyncValue<List<Person>>> {
     );
 
     await DatabaseService.instance.createPerson(person);
+    await _syncTotalParticipants(); // Sync total after adding
     await _loadPeople();
 
     // Log the change
@@ -160,6 +161,7 @@ class PeopleNotifier extends StateNotifier<AsyncValue<List<Person>>> {
   Future<void> removePerson(String id) async {
     final person = await DatabaseService.instance.getPersonById(id);
     await DatabaseService.instance.deletePerson(id);
+    await _syncTotalParticipants(); // Sync total after removing
     await _loadPeople();
 
     // Log the change
@@ -172,6 +174,74 @@ class PeopleNotifier extends StateNotifier<AsyncValue<List<Person>>> {
           timestamp: DateTime.now(),
           description: 'Removed person: ${person.name}',
         ),
+      );
+    }
+  }
+
+  Future<void> updatePerson(Person person) async {
+    await DatabaseService.instance.updatePerson(person);
+    await _loadPeople();
+    
+    // Log the change
+    if (tripId != null) {
+      await DatabaseService.instance.createChangeLog(
+        ChangeLogEntry(
+          id: const Uuid().v4(),
+          tripId: tripId!,
+          changeType: ChangeType.personUpdated, // We might need to add this enum value if not exists, or reuse generic
+          timestamp: DateTime.now(),
+          description: 'Updated person: ${person.name}',
+        ),
+      );
+    }
+  }
+  
+  Future<void> setParticipantCount(int targetCount) async {
+    if (tripId == null || targetCount < 0) return;
+    
+    // 1. Update the Trip's totalParticipants first
+    final currentTrip = await DatabaseService.instance.getTripById(tripId!);
+    if (currentTrip != null) {
+      await DatabaseService.instance.updateTrip(
+        currentTrip.copyWith(totalParticipants: targetCount)
+      );
+    }
+
+    // 2. Adjust named people list to match targetCount
+    final currentPeople = state.value ?? [];
+    final currentCount = currentPeople.length;
+    
+    if (targetCount > currentCount) {
+      // Add generic people
+      for (int i = currentCount + 1; i <= targetCount; i++) {
+        await addPerson('Person $i');
+      }
+    } else if (targetCount < currentCount) {
+      // Remove people from the end, prioritizing those who are "generic" looking if possible?
+      // For now, just remove from the end to be simple and predictable.
+      final toRemove = currentCount - targetCount;
+      for (int i = 0; i < toRemove; i++) {
+        // Remove the last person
+        final personToRemove = currentPeople[currentPeople.length - 1 - i];
+        await removePerson(personToRemove.id);
+      }
+    }
+    
+    // _loadPeople is called by addPerson/removePerson, but just in case
+    await _loadPeople();
+  }
+  
+  // Helper to ensure Trip.totalParticipants >= People.length
+  Future<void> _syncTotalParticipants() async {
+    if (tripId == null) return;
+    
+    // Get fresh data
+    final trip = await DatabaseService.instance.getTripById(tripId!);
+    final peopleCount = (await DatabaseService.instance.getPeopleByTripId(tripId!)).length;
+    
+    if (trip != null && trip.totalParticipants < peopleCount) {
+      await DatabaseService.instance.updateTrip(
+        trip.copyWith(totalParticipants: peopleCount)
       );
     }
   }

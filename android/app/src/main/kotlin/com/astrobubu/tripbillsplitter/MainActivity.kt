@@ -1,4 +1,4 @@
-package com.example.trip_bill_splitter
+package com.astrobubu.tripbillsplitter
 
 import io.flutter.embedding.android.FlutterActivity
 

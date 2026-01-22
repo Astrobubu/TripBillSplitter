@@ -208,6 +208,16 @@ class DatabaseService {
     );
   }
 
+  Future<int> updatePerson(Person person) async {
+    final db = await instance.database;
+    return await db.update(
+      'people',
+      person.toMap(),
+      where: 'id = ?',
+      whereArgs: [person.id],
+    );
+  }
+
   // Expense CRUD operations
   Future<Expense> createExpense(Expense expense) async {
     final db = await instance.database;

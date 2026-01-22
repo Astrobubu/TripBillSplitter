@@ -21,7 +21,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
   final _personController = TextEditingController();
   final _amountController = TextEditingController();
   final _descController = TextEditingController();
-  final _participantsController = TextEditingController();
+  // REMOVED: _participantsController
   String? _editingExpenseId;
 
   @override
@@ -29,33 +29,65 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
     _personController.dispose();
     _amountController.dispose();
     _descController.dispose();
-    _participantsController.dispose();
+    // REMOVED: _participantsController.dispose
     super.dispose();
   }
 
-  void _updateParticipants() async {
-    final count = int.tryParse(_participantsController.text);
-    if (count != null && count > 0) {
-      final currentTrip = await ref.read(currentTripProvider.future);
-      if (currentTrip != null) {
-        // Update trip participant count
-        await ref.read(tripsProvider.notifier).updateTrip(
-              currentTrip.copyWith(totalParticipants: count),
-            );
-        
-        // Auto-create generic participants if needed
-        final peopleAsync = ref.read(peopleProvider);
-        peopleAsync.whenData((people) async {
-          final currentCount = people.length;
-          if (count > currentCount) {
-            // Add more generic people
-            for (int i = currentCount + 1; i <= count; i++) {
-              await ref.read(peopleProvider.notifier).addPerson('Person $i');
-            }
-          }
-        });
-      }
+  // REMOVED: _updateParticipants method entirely - moved logic to ParticipantsScreen
+
     }
+  }
+
+  void _showSettleDialog(BuildContext context, WidgetRef ref, SmartSettlement settlement, String currency) {
+    if (settlement.isPaid) return;
+
+    final amountController = TextEditingController(text: settlement.amount.toStringAsFixed(2));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Settle Debt'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${settlement.fromPersonName} pays ${settlement.toPersonName}'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Amount',
+                prefixText: currency,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              final amount = double.tryParse(amountController.text);
+              if (amount != null && amount > 0) {
+                ref.read(paymentsProvider.notifier).addPayment(
+                  fromPersonId: settlement.fromPersonId,
+                  toPersonId: settlement.toPersonId,
+                  amount: amount,
+                  note: 'Settlement',
+                );
+                Navigator.pop(ctx);
+              }
+            },
+            icon: const Icon(Icons.check),
+            label: const Text('Record Payment'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCurrencySelector() async {
@@ -232,12 +264,8 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
           );
         }
 
-        // Sync participants controller display with trip's totalParticipants
-        // Do NOT auto-update totalParticipants when adding named participants
-        final controllerValue = int.tryParse(_participantsController.text) ?? 0;
-        if (controllerValue != currentTrip.totalParticipants) {
-          _participantsController.text = currentTrip.totalParticipants.toString();
-        }
+        // REMOVED: Sync participants controller logic
+
 
         return Scaffold(
           appBar: AppBar(
@@ -349,28 +377,20 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                           ),
                                         ),
                                       ),
-                                      SizedBox(
-                                        width: 60,
-                                        child: TextField(
-                                          controller: _participantsController,
-                                          keyboardType: TextInputType.number,
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(
-                                            color: Colors.black,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 18,
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () => Navigator.of(context).push(
+                                            MaterialPageRoute(builder: (_) => const ParticipantsScreen()),
                                           ),
-                                          decoration: InputDecoration(
-                                            filled: true,
-                                            fillColor: Colors.white.withValues(alpha: 0.3),
-                                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            isDense: true,
-                                            border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(8),
-                                              borderSide: BorderSide.none,
+                                          child: Text(
+                                            currentTrip.totalParticipants.toString(),
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              color: Colors.black,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 24, // Slightly larger for visibility
                                             ),
                                           ),
-                                          onChanged: (_) => _updateParticipants(),
                                         ),
                                       ),
                                     ],
@@ -421,16 +441,6 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: _navButton(
-                                icon: Icons.payment,
-                                label: 'Payments',
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const PaymentsScreen()),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _navButton(
                                 icon: Icons.history,
                                 label: 'History',
                                 onTap: () => Navigator.of(context).push(
@@ -439,6 +449,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
+
                             Expanded(
                               child: _navButton(
                                 icon: Icons.analytics,
@@ -845,6 +856,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: ListTile(
+                                      onTap: () => _showSettleDialog(context, ref, s, currentTrip.currency),
                                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                       leading: CircleAvatar(
                                         backgroundColor: color.withOpacity(0.2),
@@ -863,6 +875,9 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                           decoration: s.isPaid ? TextDecoration.lineThrough : null,
                                         ),
                                       ),
+                                      subtitle: s.isPaid 
+                                          ? Text('Paid', style: TextStyle(color: Colors.green, fontSize: 12)) 
+                                          : Text('Tap to settle', style: TextStyle(color: Colors.grey, fontSize: 11)),
                                       trailing: Text(
                                         '${currentTrip.currency}${s.amount.toStringAsFixed(2)}',
                                         style: TextStyle(

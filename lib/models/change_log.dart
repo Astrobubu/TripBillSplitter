@@ -8,6 +8,7 @@ enum ChangeType {
   tripUpdated,
   paymentAdded,
   paymentUpdated,
+  personUpdated,
 }
 
 class ChangeLogEntry {
