@@ -42,7 +42,7 @@ class Trip {
       createdAt: DateTime.parse(map['createdAt'] as String),
       updatedAt: map['updatedAt'] != null ? DateTime.parse(map['updatedAt'] as String) : null,
       currency: map['currency'] as String? ?? '\$',
-      totalParticipants: map['totalParticipants'] as int? ?? 2,
+      totalParticipants: map['totalParticipants'] as int? ?? 0,
       isArchived: (map['isArchived'] as int?) == 1,
       iconCodePoint: map['iconCodePoint'] as int? ?? 0xe540,
       colorValue: map['colorValue'] as int? ?? 0xFF2196F3,

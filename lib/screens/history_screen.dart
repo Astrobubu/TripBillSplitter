@@ -20,6 +20,8 @@ class HistoryScreen extends ConsumerWidget {
         return Icons.person_add;
       case ChangeType.personRemoved:
         return Icons.person_remove;
+      case ChangeType.personUpdated:
+        return Icons.manage_accounts;
       case ChangeType.tripCreated:
         return Icons.luggage;
       case ChangeType.tripUpdated:
@@ -45,6 +47,8 @@ class HistoryScreen extends ConsumerWidget {
       case ChangeType.expenseDeleted:
       case ChangeType.personRemoved:
         return Colors.red;
+      case ChangeType.personUpdated:
+        return Colors.blue;
     }
   }
 

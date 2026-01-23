@@ -37,7 +37,7 @@ class TripsNotifier extends StateNotifier<AsyncValue<List<Trip>>> {
   Future<Trip> createTrip(
     String name, {
     String currency = '\$',
-    int totalParticipants = 2,
+    int totalParticipants = 0,
     int? iconCodePoint,
     int? colorValue,
   }) async {
@@ -296,13 +296,15 @@ class ExpensesNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
     await _loadExpenses();
 
     // Log the change
+    final trip = await DatabaseService.instance.getTripById(tripId!);
+    final currency = trip?.currency ?? '';
     await DatabaseService.instance.createChangeLog(
       ChangeLogEntry(
         id: const Uuid().v4(),
         tripId: tripId!,
         changeType: ChangeType.expenseAdded,
         timestamp: DateTime.now(),
-        description: 'Added expense: $description - \$${amount.toStringAsFixed(2)}',
+        description: 'Added expense: $description - $currency${amount.toStringAsFixed(2)}',
         metadata: {'expenseId': expense.id},
       ),
     );
@@ -407,6 +409,7 @@ class PaymentsNotifier extends StateNotifier<AsyncValue<List<Payment>>> {
       toPersonId: toPersonId,
       amount: amount,
       createdAt: DateTime.now(),
+      status: PaymentStatus.completed,
       note: note,
     );
 
@@ -440,17 +443,18 @@ class PaymentsNotifier extends StateNotifier<AsyncValue<List<Payment>>> {
     await _loadPayments();
 
     // Log the change
-    if (tripId != null) {
-      await DatabaseService.instance.createChangeLog(
-        ChangeLogEntry(
-          id: const Uuid().v4(),
-          tripId: tripId!,
-          changeType: ChangeType.paymentUpdated,
-          timestamp: DateTime.now(),
-          description: 'Payment marked as completed',
-        ),
-      );
-    }
+    // Log the change
+    final trip = await DatabaseService.instance.getTripById(tripId!);
+    final currency = trip?.currency ?? '';
+    await DatabaseService.instance.createChangeLog(
+      ChangeLogEntry(
+        id: const Uuid().v4(),
+        tripId: tripId!,
+        changeType: ChangeType.paymentUpdated,
+        timestamp: DateTime.now(),
+        description: 'Payment marked as completed for $currency${payment.amount.toStringAsFixed(2)}',
+      ),
+    );
   }
 
   void refresh() => _loadPayments();
@@ -466,10 +470,18 @@ final changeLogsProvider = FutureProvider.family<List<ChangeLogEntry>, String>((
 // -----------------------------------------------------------------------------
 // COMPUTED PROVIDERS
 // -----------------------------------------------------------------------------
-final currentTripProvider = FutureProvider<Trip?>((ref) async {
-  final tripId = ref.watch(currentTripIdProvider);
-  if (tripId == null) return null;
-  return await DatabaseService.instance.getTripById(tripId);
+final currentTripProvider = Provider<AsyncValue<Trip?>>((ref) {
+  final tripsAsync = ref.watch(tripsProvider);
+  final currentId = ref.watch(currentTripIdProvider);
+
+  return tripsAsync.whenData((trips) {
+    if (currentId == null) return null;
+    try {
+      return trips.firstWhere((t) => t.id == currentId);
+    } catch (_) {
+      return null;
+    }
+  });
 });
 
 final totalExpenseProvider = Provider<double>((ref) {
@@ -616,7 +628,7 @@ final smartSettlementsProvider = Provider<List<SmartSettlement>>((ref) {
       bool isPaid = payments.any((p) =>
         p.fromPersonId == debtor.personId &&
         p.toPersonId == creditor.personId &&
-        p.status == PaymentStatus.completed
+        (p.amount - transferAmount).abs() < 0.01 // Floating point tolerance
       );
       
       transactions.add(SmartSettlement(

@@ -7,7 +7,7 @@ import '../models/expense.dart';
 import '../services/share_service.dart';
 import 'history_screen.dart';
 import 'analytics_screen.dart';
-import 'payments_screen.dart';
+
 import 'participants_screen.dart';
 
 class BillSplitterScreen extends ConsumerStatefulWidget {
@@ -35,8 +35,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
 
   // REMOVED: _updateParticipants method entirely - moved logic to ParticipantsScreen
 
-    }
-  }
+
 
   void _showSettleDialog(BuildContext context, WidgetRef ref, SmartSettlement settlement, String currency) {
     if (settlement.isPaid) return;
@@ -91,7 +90,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
   }
 
   void _showCurrencySelector() async {
-    final currentTrip = await ref.read(currentTripProvider.future);
+    final currentTrip = ref.read(currentTripProvider).value;
     if (currentTrip == null) return;
 
     final selectedCurrency = await showDialog<String>(
@@ -217,7 +216,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
   }
 
   void _shareAsImage() async {
-    final currentTrip = await ref.read(currentTripProvider.future);
+    final currentTrip = ref.read(currentTripProvider).value;
     final expensesAsync = ref.read(expensesProvider);
     final peopleAsync = ref.read(peopleProvider);
     final settlements = ref.read(settlementsProvider);
