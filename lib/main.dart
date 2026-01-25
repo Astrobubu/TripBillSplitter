@@ -48,7 +48,7 @@ class TripBillSplitterApp extends ConsumerWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: themeMode,
-      home: seenOnboarding ? const TripsScreen() : const OnboardingScreen(),
+      home: seenOnboarding ? const HomeScreen() : const OnboardingScreen(),
     );
   }
 }

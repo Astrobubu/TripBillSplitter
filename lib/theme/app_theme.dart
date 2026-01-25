@@ -80,12 +80,23 @@ class AppTheme {
         foregroundColor: textColor,
         elevation: 0,
         centerTitle: true,
+        surfaceTintColor: Colors.transparent, // Fixes scroll color tint
+        scrolledUnderElevation: 0,
         titleTextStyle: GoogleFonts.inter(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: textColor,
         ),
       ),
+      
+      
+      // TabBar - Remove divider
+      // tabBarTheme: TabBarTheme(
+      //   dividerColor: Colors.transparent,
+      //   labelColor: primaryColor,
+      //   unselectedLabelColor: mutedTextColor,
+      //   indicatorColor: primaryColor,
+      // ),
 
       // Cards - no borders
       cardTheme: CardThemeData(

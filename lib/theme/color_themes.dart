@@ -44,8 +44,8 @@ class ColorThemes {
       descriptionKey: 'theme.default.description',
       primaryLight: Color(0xFF0ea5e9),
       primaryDark: Color(0xFF38bdf8),
-      accentLight: Color(0xFF06b6d4),
-      accentDark: Color(0xFF22d3ee),
+      accentLight: Color(0xFF0ea5e9), // Replaced Cyan with Primary (Sky 500)
+      accentDark: Color(0xFF38bdf8),  // Replaced Cyan with Primary (Sky 400)
       backgroundLight: Color(0xFFffffff),
       backgroundDark: Color(0xFF0f172a),
       cardLight: Color(0xFFf8fafc),

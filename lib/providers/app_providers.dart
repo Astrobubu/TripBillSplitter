@@ -92,7 +92,7 @@ class TripsNotifier extends StateNotifier<AsyncValue<List<Trip>>> {
   Future<void> archiveTrip(String tripId) async {
     final trip = await DatabaseService.instance.getTripById(tripId);
     if (trip != null) {
-      await DatabaseService.instance.updateTrip(trip.copyWith(isArchived: true, updatedAt: DateTime.now()));
+      await DatabaseService.instance.updateTrip(trip.copyWith(isArchived: !trip.isArchived, updatedAt: DateTime.now()));
       await _loadTrips();
     }
   }
@@ -105,13 +105,15 @@ class TripsNotifier extends StateNotifier<AsyncValue<List<Trip>>> {
 // -----------------------------------------------------------------------------
 final peopleProvider = StateNotifierProvider<PeopleNotifier, AsyncValue<List<Person>>>((ref) {
   final currentTripId = ref.watch(currentTripIdProvider);
-  return PeopleNotifier(currentTripId);
+  final tripsNotifier = ref.read(tripsProvider.notifier);
+  return PeopleNotifier(currentTripId, tripsNotifier);
 });
 
 class PeopleNotifier extends StateNotifier<AsyncValue<List<Person>>> {
   final String? tripId;
+  final TripsNotifier tripsNotifier;
 
-  PeopleNotifier(this.tripId) : super(const AsyncValue.loading()) {
+  PeopleNotifier(this.tripId, this.tripsNotifier) : super(const AsyncValue.loading()) {
     _loadPeople();
   }
 
@@ -122,26 +124,40 @@ class PeopleNotifier extends StateNotifier<AsyncValue<List<Person>>> {
     }
 
     try {
-      final people = await DatabaseService.instance.getPeopleByTripId(tripId!);
+      final peopleRaw = await DatabaseService.instance.getPeopleByTripId(tripId!);
+      // Filter out internal "ghost" users used for anonymous payments
+      final people = peopleRaw.where((p) => !p.id.startsWith('anonymous_')).toList();
       state = AsyncValue.data(people);
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
     }
   }
 
-  Future<Person> addPerson(String name) async {
+  Future<Person> addPerson(String name, {String? phoneNumber}) async {
     if (name.trim().isEmpty || tripId == null) {
       throw Exception('Invalid name or trip ID');
     }
 
+    // 1. Create the person
     final person = Person(
       id: const Uuid().v4(),
       name: name.trim(),
       tripId: tripId!,
+      phoneNumber: phoneNumber,
     );
 
     await DatabaseService.instance.createPerson(person);
-    await _syncTotalParticipants(); // Sync total after adding
+    
+    // 2. Update Trip participant count
+    final trip = await DatabaseService.instance.getTripById(tripId!);
+    if (trip != null) {
+      await DatabaseService.instance.updateTrip(
+        trip.copyWith(totalParticipants: trip.totalParticipants + 1)
+      );
+      // Notify trips provider to reload
+      tripsNotifier.refresh();
+    }
+
     await _loadPeople();
 
     // Log the change
@@ -158,10 +174,54 @@ class PeopleNotifier extends StateNotifier<AsyncValue<List<Person>>> {
     return person;
   }
 
+  Future<void> addPeople(List<Map<String, String?>> peopleData) async {
+    if (tripId == null || peopleData.isEmpty) return;
+
+    // Batch insertion could be optimized with a transaction, but loop is fine for <100 contacts
+    for (final data in peopleData) {
+      final name = data['name'];
+      if (name == null || name.isEmpty) continue;
+
+      final person = Person(
+        id: const Uuid().v4(),
+        name: name,
+        tripId: tripId!,
+        phoneNumber: data['phone'],
+      );
+      await DatabaseService.instance.createPerson(person);
+    }
+
+    // Update total count once
+    final trip = await DatabaseService.instance.getTripById(tripId!);
+    if (trip != null) {
+      await DatabaseService.instance.updateTrip(
+        trip.copyWith(totalParticipants: trip.totalParticipants + peopleData.length)
+      );
+      tripsNotifier.refresh();
+    }
+
+    await _loadPeople();
+  }
+
+  Future<void> addPersonFromContact(String name, String? phoneNumber) async {
+    // Check if phone number already exists in this trip to avoid duplicates (optional but good UX)
+    // For now, just add.
+    await addPerson(name, phoneNumber: phoneNumber);
+  }
+
   Future<void> removePerson(String id) async {
     final person = await DatabaseService.instance.getPersonById(id);
     await DatabaseService.instance.deletePerson(id);
-    await _syncTotalParticipants(); // Sync total after removing
+    
+    // Decrease trip count if possible
+    final trip = await DatabaseService.instance.getTripById(tripId!);
+    if (trip != null && trip.totalParticipants > 0) {
+       await DatabaseService.instance.updateTrip(
+        trip.copyWith(totalParticipants: trip.totalParticipants - 1)
+      );
+      tripsNotifier.refresh();
+    }
+
     await _loadPeople();
 
     // Log the change
@@ -188,7 +248,7 @@ class PeopleNotifier extends StateNotifier<AsyncValue<List<Person>>> {
         ChangeLogEntry(
           id: const Uuid().v4(),
           tripId: tripId!,
-          changeType: ChangeType.personUpdated, // We might need to add this enum value if not exists, or reuse generic
+          changeType: ChangeType.personUpdated, 
           timestamp: DateTime.now(),
           description: 'Updated person: ${person.name}',
         ),
@@ -199,51 +259,41 @@ class PeopleNotifier extends StateNotifier<AsyncValue<List<Person>>> {
   Future<void> setParticipantCount(int targetCount) async {
     if (tripId == null || targetCount < 0) return;
     
-    // 1. Update the Trip's totalParticipants first
+    // 1. Get current state
     final currentTrip = await DatabaseService.instance.getTripById(tripId!);
+    final currentPeople = await DatabaseService.instance.getPeopleByTripId(tripId!);
+    final currentPeopleCount = currentPeople.length;
+    
+    // 2. Update the Trip's totalParticipants
     if (currentTrip != null) {
       await DatabaseService.instance.updateTrip(
         currentTrip.copyWith(totalParticipants: targetCount)
       );
+      tripsNotifier.refresh();
     }
-
-    // 2. Adjust named people list to match targetCount
-    final currentPeople = state.value ?? [];
-    final currentCount = currentPeople.length;
     
-    if (targetCount > currentCount) {
-      // Add generic people
-      for (int i = currentCount + 1; i <= targetCount; i++) {
-        await addPerson('Person $i');
+    // 3. Adjust people list to match targetCount
+    if (targetCount > currentPeopleCount) {
+      // Add generic people directly (bypass addPerson to avoid any side effects)
+      for (int i = currentPeopleCount + 1; i <= targetCount; i++) {
+        final person = Person(
+          id: const Uuid().v4(),
+          name: 'Person $i',
+          tripId: tripId!,
+        );
+        await DatabaseService.instance.createPerson(person);
       }
-    } else if (targetCount < currentCount) {
-      // Remove people from the end, prioritizing those who are "generic" looking if possible?
-      // For now, just remove from the end to be simple and predictable.
-      final toRemove = currentCount - targetCount;
+    } else if (targetCount < currentPeopleCount) {
+      // Remove excess people from the end
+      final toRemove = currentPeopleCount - targetCount;
       for (int i = 0; i < toRemove; i++) {
-        // Remove the last person
         final personToRemove = currentPeople[currentPeople.length - 1 - i];
-        await removePerson(personToRemove.id);
+        await DatabaseService.instance.deletePerson(personToRemove.id);
       }
     }
     
-    // _loadPeople is called by addPerson/removePerson, but just in case
+    // 4. Reload the people list to update UI
     await _loadPeople();
-  }
-  
-  // Helper to ensure Trip.totalParticipants >= People.length
-  Future<void> _syncTotalParticipants() async {
-    if (tripId == null) return;
-    
-    // Get fresh data
-    final trip = await DatabaseService.instance.getTripById(tripId!);
-    final peopleCount = (await DatabaseService.instance.getPeopleByTripId(tripId!)).length;
-    
-    if (trip != null && trip.totalParticipants < peopleCount) {
-      await DatabaseService.instance.updateTrip(
-        trip.copyWith(totalParticipants: peopleCount)
-      );
-    }
   }
 
   void refresh() => _loadPeople();
@@ -315,13 +365,26 @@ class ExpensesNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
   Future<void> updateExpense(String id, String description, double amount, String payerId) async {
     if (tripId == null) return;
 
+    final expenses = state.value ?? [];
+    final existingExpense = expenses.firstWhere(
+      (e) => e.id == id, 
+      orElse: () => Expense(
+        id: id, 
+        description: '', 
+        amount: 0, 
+        payerId: '', 
+        tripId: tripId!, 
+        createdAt: DateTime.now()
+      )
+    );
+
     final expense = Expense(
       id: id,
       description: description,
       amount: amount,
       payerId: payerId,
       tripId: tripId!,
-      createdAt: DateTime.now(), // This should come from the existing expense
+      createdAt: existingExpense.createdAt,
       updatedAt: DateTime.now(),
     );
 
@@ -329,13 +392,15 @@ class ExpensesNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
     await _loadExpenses();
 
     // Log the change
+    final trip = await DatabaseService.instance.getTripById(tripId!);
+    final currency = trip?.currency ?? '';
     await DatabaseService.instance.createChangeLog(
       ChangeLogEntry(
         id: const Uuid().v4(),
         tripId: tripId!,
         changeType: ChangeType.expenseUpdated,
         timestamp: DateTime.now(),
-        description: 'Updated expense: $description - \$${amount.toStringAsFixed(2)}',
+        description: 'Updated expense: $description - $currency${amount.toStringAsFixed(2)}',
         metadata: {'expenseId': id},
       ),
     );
@@ -402,6 +467,22 @@ class PaymentsNotifier extends StateNotifier<AsyncValue<List<Payment>>> {
       throw Exception('No active trip');
     }
 
+    // 1. Handle "Ghost" users for anonymous payments
+    // If we are settling with "Others", we need a real DB entity to satisfy Foreign Keys
+    if (fromPersonId.startsWith('anonymous_') || toPersonId.startsWith('anonymous_')) {
+      final ghostId = fromPersonId.startsWith('anonymous_') ? fromPersonId : toPersonId;
+      final ghostExists = await DatabaseService.instance.getPersonById(ghostId);
+      
+      if (ghostExists == null) {
+        // Create the ghost "Others" user silently
+        await DatabaseService.instance.createPerson(Person(
+          id: ghostId,
+          name: 'Others',
+          tripId: tripId!,
+        ));
+      }
+    }
+
     final payment = Payment(
       id: const Uuid().v4(),
       tripId: tripId!,
@@ -417,13 +498,15 @@ class PaymentsNotifier extends StateNotifier<AsyncValue<List<Payment>>> {
     await _loadPayments();
 
     // Log the change
+    final trip = await DatabaseService.instance.getTripById(tripId!);
+    final currency = trip?.currency ?? '';
     await DatabaseService.instance.createChangeLog(
       ChangeLogEntry(
         id: const Uuid().v4(),
         tripId: tripId!,
         changeType: ChangeType.paymentAdded,
         timestamp: DateTime.now(),
-        description: 'Payment recorded: \$${amount.toStringAsFixed(2)}',
+        description: 'Payment recorded: $currency${amount.toStringAsFixed(2)}',
       ),
     );
 
@@ -527,7 +610,12 @@ final settlementsProvider = Provider<List<SettlementInfo>>((ref) {
                   .where((p) => p.fromPersonId == person.id && p.status == PaymentStatus.completed)
                   .fold(0.0, (sum, p) => sum + p.amount);
 
-              double netAmount = paid - average + paymentsReceived - paymentsMade;
+              // Corrected Math:
+              // - Expenses paid (Credit)
+              // - Fair share (Debit)
+              // - Payments Received (Reduces Credit - I got my money back)
+              // - Payments Made (Reduces Debt - I paid my dues)
+              double netAmount = paid - average - paymentsReceived + paymentsMade;
 
               results.add(SettlementInfo(
                 personName: person.name,
@@ -538,10 +626,20 @@ final settlementsProvider = Provider<List<SettlementInfo>>((ref) {
 
             int anonymousCount = effectiveCount - people.length;
             if (anonymousCount > 0) {
+              final anonId = 'anonymous_${trip.id}';
+              
+              double anonymousPaymentsMade = payments
+                  .where((p) => p.fromPersonId == anonId && p.status == PaymentStatus.completed)
+                  .fold(0.0, (sum, p) => sum + p.amount);
+
+              // We don't usually track payments RECEIVED by anonymous (unless they overpaid?), 
+              // but for symmetry/correctness we could. 
+              // For now, let's just assume they are paying off their debt.
+              
               results.add(SettlementInfo(
                 personName: '$anonymousCount Others',
-                personId: 'anonymous',
-                amount: -(average * anonymousCount),
+                personId: anonId,
+                amount: -(average * anonymousCount) + anonymousPaymentsMade,
                 isAnonymous: true,
               ));
             }
@@ -572,7 +670,6 @@ class SmartSettlement {
   final String toPersonId;
   final String toPersonName;
   final double amount;
-  final bool isPaid;
   final bool isAnonymous;
 
   SmartSettlement({
@@ -581,7 +678,6 @@ class SmartSettlement {
     required this.toPersonId,
     required this.toPersonName,
     required this.amount,
-    this.isPaid = false,
     this.isAnonymous = false,
   });
 }
@@ -624,20 +720,12 @@ final smartSettlementsProvider = Provider<List<SmartSettlement>>((ref) {
           ? remainingDebt 
           : availableCredit;
       
-      // Check if this exact transaction has been paid
-      bool isPaid = payments.any((p) =>
-        p.fromPersonId == debtor.personId &&
-        p.toPersonId == creditor.personId &&
-        (p.amount - transferAmount).abs() < 0.01 // Floating point tolerance
-      );
-      
       transactions.add(SmartSettlement(
         fromPersonId: debtor.personId,
         fromPersonName: debtor.personName,
         toPersonId: creditor.personId,
         toPersonName: creditor.personName,
         amount: transferAmount,
-        isPaid: isPaid,
         isAnonymous: debtor.isAnonymous,
       ));
       

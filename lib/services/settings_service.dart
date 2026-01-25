@@ -106,7 +106,7 @@ class SettingsService {
   // Default participants
   Future<int> getDefaultParticipants() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_defaultParticipantsKey) ?? 2;
+    return prefs.getInt(_defaultParticipantsKey) ?? 0;
   }
 
   Future<void> setDefaultParticipants(int count) async {

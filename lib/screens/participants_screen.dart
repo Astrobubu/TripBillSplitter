@@ -3,6 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../providers/app_providers.dart';
 import '../models/person.dart';
+import '../models/person.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'contact_picker_screen.dart';
+import '../widgets/participant_list_tile.dart';
 
 class ParticipantsScreen extends ConsumerStatefulWidget {
   const ParticipantsScreen({super.key});
@@ -12,58 +17,49 @@ class ParticipantsScreen extends ConsumerStatefulWidget {
 }
 
 class _ParticipantsScreenState extends ConsumerState<ParticipantsScreen> {
-  final _totalCountController = TextEditingController();
   final _addNameController = TextEditingController();
 
-  @override
-  void initState() {
-    super.initState();
-    // Initialize controller with current trip data
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final trip = ref.read(currentTripProvider).value;
-      if (trip != null) {
-        _totalCountController.text = trip.totalParticipants.toString();
-      }
-    });
-
-    // Listen to changes in trip to update the controller if it changes externally
-    // or if we need to sync initial state when data loads
-  }
 
   @override
   void dispose() {
-    _totalCountController.dispose();
     _addNameController.dispose();
     super.dispose();
   }
 
-  void _updateTotalCount(String value) {
-    if (value.isEmpty) return;
-    final int? newCount = int.tryParse(value);
-    if (newCount != null && newCount > 0) {
-      ref.read(peopleProvider.notifier).setParticipantCount(newCount);
-    }
-  }
 
   void _addPerson() {
     if (_addNameController.text.trim().isEmpty) return;
-    
-    // Adding a named person should increase the total count if it's already full?
-    // Or just add them? The provider logic now syncs totalParticipants >= people.length
-    // so we can just add.
     ref.read(peopleProvider.notifier).addPerson(_addNameController.text.trim());
     _addNameController.clear();
-    
-    // Also update the UI controller to reflect potential new count
-    // Wait a bit for the provider to update state and DB
-    Future.delayed(const Duration(milliseconds: 100), () {
+  }
+
+  Future<void> _pickContact() async {
+    final currentPeople = ref.read(peopleProvider).value ?? [];
+    final excludedNames = currentPeople.map((p) => p.name).toList();
+    final excludedPhones = currentPeople
+        .map((p) => p.phoneNumber)
+        .where((p) => p != null)
+        .cast<String>()
+        .toList();
+
+    final result = await Navigator.push<List<Map<String, String?>>>(
+      context, 
+      MaterialPageRoute(
+        builder: (_) => ContactPickerScreen(
+          excludedNames: excludedNames,
+          excludedPhoneNumbers: excludedPhones,
+        ),
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      await ref.read(peopleProvider.notifier).addPeople(result);
       if (mounted) {
-        final trip = ref.read(currentTripProvider).value;
-        if (trip != null) {
-          _totalCountController.text = trip.totalParticipants.toString();
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Added ${result.length} participants')),
+        );
       }
-    });
+    }
   }
 
   @override
@@ -74,15 +70,6 @@ class _ParticipantsScreenState extends ConsumerState<ParticipantsScreen> {
     
     // Keep controller in sync with External updates (e.g. from provider syncs)
     // But ONLY if not currently focused to avoid typing interference
-    /*
-    currentTripAsync.whenData((trip) {
-      if (trip != null && !FocusScope.of(context).hasFocus) {
-         if (_totalCountController.text != trip.totalParticipants.toString()) {
-           _totalCountController.text = trip.totalParticipants.toString();
-         }
-      }
-    });
-    */
     // Better strategy: Only sync on load. Two-way binding with text field is tricky.
     // relying on onSubmitted for total count mainly.
 
@@ -94,67 +81,37 @@ class _ParticipantsScreenState extends ConsumerState<ParticipantsScreen> {
         child: Column(
           children: [
             // 1. Global Controls Section
-            Container(
+            // 1. Global Controls Section - Simplified to just header
+            Padding(
               padding: const EdgeInsets.all(16),
-              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              child: Column(
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.groups, size: 28),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Total Participants',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Auto-generates "Person X"',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(
-                        width: 100,
-                        child: TextField(
-                          controller: _totalCountController,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 24,
+                  const Icon(Icons.groups, size: 28),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total Participants: ${currentTripAsync.value?.totalParticipants ?? 0}',
+                          style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: theme.cardColor,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                          onSubmitted: _updateTotalCount,
-                          onTapOutside: (_) {
-                            FocusManager.instance.primaryFocus?.unfocus();
-                            // Trigger update on blur
-                            _updateTotalCount(_totalCountController.text);
-                          },
                         ),
-                      ),
-                    ],
+                        Text(
+                          'Add people below',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
 
+            
             const Divider(height: 1),
 
             // 2. Add Named Person Section
@@ -182,6 +139,12 @@ class _ParticipantsScreenState extends ConsumerState<ParticipantsScreen> {
                     icon: const Icon(Icons.add),
                     tooltip: 'Add Person',
                   ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    onPressed: _pickContact, 
+                    icon: const Icon(Icons.contacts),
+                    tooltip: 'Add from Contacts',
+                  ),
                 ],
               ),
             ),
@@ -204,25 +167,17 @@ class _ParticipantsScreenState extends ConsumerState<ParticipantsScreen> {
                     itemCount: people.length,
                     itemBuilder: (context, index) {
                       final person = people[index];
-                      return _ParticipantListItem(
+
+                      return ParticipantListTile(
                         key: ValueKey(person.id),
                         person: person,
-                        onUpdate: (newName) {
+                        onUpdate: (newName, newPhone) {
                           ref.read(peopleProvider.notifier).updatePerson(
-                            person.copyWith(name: newName),
+                            person.copyWith(name: newName, phoneNumber: newPhone),
                           );
                         },
                         onRemove: () {
                            ref.read(peopleProvider.notifier).removePerson(person.id);
-                           // Update controller after removal
-                           Future.delayed(const Duration(milliseconds: 100), () {
-                              if (context.mounted) {
-                                final trip = ref.read(currentTripProvider).value;
-                                if (trip != null) {
-                                  _totalCountController.text = trip.totalParticipants.toString();
-                                }
-                              }
-                           });
                         },
                       );
                     },
@@ -239,125 +194,4 @@ class _ParticipantsScreenState extends ConsumerState<ParticipantsScreen> {
   }
 }
 
-class _ParticipantListItem extends StatefulWidget {
-  final Person person;
-  final Function(String) onUpdate;
-  final VoidCallback onRemove;
 
-  const _ParticipantListItem({
-    super.key,
-    required this.person,
-    required this.onUpdate,
-    required this.onRemove,
-  });
-
-  @override
-  State<_ParticipantListItem> createState() => _ParticipantListItemState();
-}
-
-class _ParticipantListItemState extends State<_ParticipantListItem> {
-  late TextEditingController _nameController;
-  bool _isEditing = false;
-  final FocusNode _focusNode = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.person.name);
-    _focusNode.addListener(() {
-      if (!_focusNode.hasFocus && _isEditing) {
-        _save();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final newName = _nameController.text.trim();
-    if (newName.isNotEmpty && newName != widget.person.name) {
-      widget.onUpdate(newName);
-    } else {
-      _nameController.text = widget.person.name; // Revert if empty or same
-    }
-    setState(() {
-      _isEditing = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.person.name != _nameController.text && !_isEditing) {
-        _nameController.text = widget.person.name;
-    }
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-          child: Text(
-            widget.person.name.isNotEmpty ? widget.person.name[0].toUpperCase() : '?',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        title: _isEditing
-            ? TextField(
-                controller: _nameController,
-                focusNode: _focusNode,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                ),
-                onSubmitted: (_) => _save(),
-              )
-            : GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _isEditing = true;
-                  });
-                },
-                child: Text(
-                  widget.person.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!_isEditing)
-              IconButton(
-                icon: const Icon(Icons.edit_outlined, size: 20, color: Colors.grey),
-                onPressed: () {
-                   setState(() {
-                    _isEditing = true;
-                  });
-                },
-              ),
-            if (_isEditing)
-               IconButton(
-                icon: const Icon(Icons.check, color: Colors.green),
-                onPressed: _save,
-              ),
-              
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-              onPressed: widget.onRemove,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

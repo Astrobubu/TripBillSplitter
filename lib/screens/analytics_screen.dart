@@ -14,6 +14,8 @@ class AnalyticsScreen extends ConsumerWidget {
     final expensesAsync = ref.watch(expensesProvider);
     final peopleAsync = ref.watch(peopleProvider);
     final total = ref.watch(totalExpenseProvider);
+    final currentTripAsync = ref.watch(currentTripProvider);
+    final currency = currentTripAsync.value?.currency ?? '\$';
 
     return Scaffold(
       appBar: AppBar(
@@ -74,7 +76,7 @@ class AnalyticsScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '\$${total.toStringAsFixed(2)}',
+                            '$currency${total.toStringAsFixed(2)}',
                             style: theme.textTheme.headlineMedium?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: Colors.green,
@@ -111,7 +113,7 @@ class AnalyticsScreen extends ConsumerWidget {
                                     touchTooltipData: BarTouchTooltipData(
                                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
                                         return BarTooltipItem(
-                                          '\$${rod.toY.toStringAsFixed(2)}',
+                                          '$currency${rod.toY.toStringAsFixed(2)}',
                                           const TextStyle(color: Colors.white),
                                         );
                                       },
@@ -145,7 +147,7 @@ class AnalyticsScreen extends ConsumerWidget {
                                         reservedSize: 40,
                                         getTitlesWidget: (value, meta) {
                                           return Text(
-                                            '\$${value.toInt()}',
+                                            '$currency${value.toInt()}',
                                             style: const TextStyle(fontSize: 10),
                                           );
                                         },
@@ -213,7 +215,7 @@ class AnalyticsScreen extends ConsumerWidget {
                         ),
                         subtitle: Text('${percentage.toStringAsFixed(1)}% of total'),
                         trailing: Text(
-                          '\$${personTotal.toStringAsFixed(2)}',
+                          '$currency${personTotal.toStringAsFixed(2)}',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: Colors.blue,

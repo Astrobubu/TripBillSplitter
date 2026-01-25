@@ -7,24 +7,56 @@ import '../providers/settings_provider.dart';
 import '../models/trip.dart';
 import 'bill_splitter_screen.dart';
 import 'settings_screen.dart';
+import 'manage_frequent_contacts_screen.dart';
+import 'participants_screen.dart';
+import 'contact_picker_screen.dart';
 
-class TripsScreen extends ConsumerStatefulWidget {
-  const TripsScreen({super.key});
+class HomeScreen extends ConsumerStatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  ConsumerState<TripsScreen> createState() => _TripsScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _TripsScreenState extends ConsumerState<TripsScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  int _currentIndex = 0;
   bool _showArchived = false;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tripsAsync = ref.watch(tripsProvider);
-
     return Scaffold(
-      appBar: AppBar(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          _buildTripsTab(),
+          const ManageFrequentContactsScreen(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (index) => setState(() => _currentIndex = index),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.luggage_outlined),
+            selectedIcon: Icon(Icons.luggage),
+            label: 'My Trips',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.star_outline),
+            selectedIcon: Icon(Icons.star),
+            label: 'Frequent People',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTripsTab() {
+     final theme = Theme.of(context);
+     final tripsAsync = ref.watch(tripsProvider);
+     
+     return Scaffold(
+       appBar: AppBar(
         title: const Text('My Trips'),
         actions: [
           IconButton(
@@ -148,14 +180,17 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                         const SizedBox(height: 12),
                         Row(
                           children: [
-                            _TripInfoChip(
-                              icon: Icons.groups,
-                              label: '${trip.totalParticipants} people',
-                            ),
-                            const SizedBox(width: 8),
-                            _TripInfoChip(
-                              icon: Icons.attach_money,
-                              label: trip.currency,
+                            InkWell(
+                              onTap: () {
+                                ref.read(currentTripIdProvider.notifier).state = trip.id;
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const ParticipantsScreen()),
+                                );
+                              },
+                              child: _TripInfoChip(
+                                icon: Icons.groups,
+                                label: '${trip.totalParticipants} people',
+                              ),
                             ),
                           ],
                         ),
@@ -196,6 +231,8 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
 
     final defaultCurrencyAsync = ref.read(defaultCurrencyProvider);
     final defaultParticipants = ref.read(defaultParticipantsProvider);
+    int totalParticipants = defaultParticipants;
+    List<Map<String, String?>> selectedContacts = [];
 
     showDialog(
       context: context,
@@ -286,6 +323,85 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 16),
+                    // Participants Section
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.people_outline, size: 20),
+                              const SizedBox(width: 8),
+                              const Text('Participants'),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed: totalParticipants > 1 ? () {
+                                  setState(() => totalParticipants--);
+                                } : null,
+                                constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                                padding: EdgeInsets.zero,
+                              ),
+                              Text(' $totalParticipants ', style: const TextStyle(fontWeight: FontWeight.bold)),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () {
+                                  setState(() => totalParticipants++);
+                                },
+                                constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                                padding: EdgeInsets.zero,
+                              ),
+                            ],
+                          ),
+                          if (selectedContacts.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              children: selectedContacts.map((c) => Chip(
+                                label: Text(c['name'] ?? ''),
+                                avatar: const CircleAvatar(child: Icon(Icons.person, size: 16)),
+                                onDeleted: () {
+                                  setState(() {
+                                    selectedContacts.remove(c);
+                                  });
+                                },
+                              )).toList(),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final result = await Navigator.push<List<Map<String, String?>>>(
+                                context, 
+                                MaterialPageRoute(builder: (_) => const ContactPickerScreen(
+                                  excludedNames: [], 
+                                  excludedPhoneNumbers: []
+                                ))
+                              );
+                              if (result != null && result.isNotEmpty) {
+                                setState(() {
+                                  selectedContacts.addAll(result);
+                                  if (totalParticipants < selectedContacts.length) {
+                                    totalParticipants = selectedContacts.length;
+                                  }
+                                });
+                              }
+                            },
+                            icon: const Icon(Icons.contacts),
+                            label: const Text('Add from Contacts'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 40),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -302,10 +418,37 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                       final trip = await ref.read(tripsProvider.notifier).createTrip(
                             name,
                             currency: currency,
-                            totalParticipants: defaultParticipants,
+                            totalParticipants: totalParticipants,
                             iconCodePoint: selectedIconCode,
                             colorValue: selectedColor,
                           );
+                      
+                      if (selectedContacts.isNotEmpty) {
+                        try {
+                           // Set current trip so addPeople knows where to add
+                           // Actually addPeople might need tripId if not current?
+                           // Checking addPeople... it uses currentTripIdProvider usually?
+                           // Or createPerson takes tripId.
+                           
+                           // We set currentTripId below.
+                           ref.read(currentTripIdProvider.notifier).state = trip.id;
+                           // But state update might not propagate instantly to provider.read(peopleProvider) if it depends on async.
+                           
+                           // Using raw DatabaseService might be safer or ensuring we wait.
+                           // Helper: peopleProvider uses currentTripIdProvider.
+                           // Let's use the notifier which should be valid once state is set?
+                           // Actually app_providers.dart: addPeople uses `tripId = ref.read(currentTripIdProvider)`.
+                           
+                           // So:
+                           ref.read(currentTripIdProvider.notifier).state = trip.id;
+                           await Future.delayed(const Duration(milliseconds: 50)); // Tiny yield
+                           await ref.read(peopleProvider.notifier).addPeople(selectedContacts);
+                        } catch (e) {
+                          debugPrint('Error adding contacts: $e');
+                        }
+                      } else {
+                         ref.read(currentTripIdProvider.notifier).state = trip.id;
+                      }
                       ref.read(currentTripIdProvider.notifier).state = trip.id;
                       if (mounted) {
                         Navigator.of(context).pop();

@@ -2,11 +2,13 @@ class Person {
   final String id;
   final String name;
   final String tripId;
+  final String? phoneNumber;
 
   Person({
     required this.id,
     required this.name,
     required this.tripId,
+    this.phoneNumber,
   });
 
   Map<String, dynamic> toMap() {
@@ -14,6 +16,7 @@ class Person {
       'id': id,
       'name': name,
       'tripId': tripId,
+      'phone_number': phoneNumber,
     };
   }
 
@@ -22,6 +25,7 @@ class Person {
       id: map['id'] as String,
       name: map['name'] as String,
       tripId: map['tripId'] as String,
+      phoneNumber: map['phone_number'] as String?,
     );
   }
 
@@ -29,11 +33,13 @@ class Person {
     String? id,
     String? name,
     String? tripId,
+    String? phoneNumber,
   }) {
     return Person(
       id: id ?? this.id,
       name: name ?? this.name,
       tripId: tripId ?? this.tripId,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
     );
   }
 }

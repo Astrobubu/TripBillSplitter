@@ -15,7 +15,7 @@ class Trip {
     required this.createdAt,
     this.updatedAt,
     this.currency = '\$',
-    this.totalParticipants = 2,
+    this.totalParticipants = 0,
     this.isArchived = false,
     this.iconCodePoint = 0xe540, // Icons.luggage
     this.colorValue = 0xFF2196F3, // Blue

@@ -57,7 +57,7 @@ final defaultParticipantsProvider = StateNotifierProvider<DefaultParticipantsNot
 class DefaultParticipantsNotifier extends StateNotifier<int> {
   final SettingsService _settingsService;
 
-  DefaultParticipantsNotifier(this._settingsService) : super(2) {
+  DefaultParticipantsNotifier(this._settingsService) : super(0) {
     _loadDefaultParticipants();
   }
 

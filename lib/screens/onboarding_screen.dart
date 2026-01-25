@@ -38,7 +38,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     if (mounted) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const TripsScreen()),
+        MaterialPageRoute(builder: (_) => HomeScreen()),
       );
     }
   }

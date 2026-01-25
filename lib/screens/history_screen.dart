@@ -56,6 +56,8 @@ class HistoryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final currentTripId = ref.watch(currentTripIdProvider);
+    final currentTripAsync = ref.watch(currentTripProvider);
+    final currency = currentTripAsync.value?.currency ?? '\$';
 
     if (currentTripId == null) {
       return Scaffold(
@@ -154,7 +156,7 @@ class HistoryScreen extends ConsumerWidget {
                           ),
                           child: Icon(icon, color: color, size: 20),
                         ),
-                        title: Text(log.description),
+                        title: Text(log.description.replaceAll('\$', currency)),
                         subtitle: Text(timeFormat.format(log.timestamp)),
                       ),
                     );

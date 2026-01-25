@@ -7,8 +7,12 @@ import '../models/expense.dart';
 import '../services/share_service.dart';
 import 'history_screen.dart';
 import 'analytics_screen.dart';
+import 'contact_picker_screen.dart';
 
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'participants_screen.dart';
+import '../models/trip.dart'; // Ensure Trip model is imported if not already via providers or implicit
 
 class BillSplitterScreen extends ConsumerStatefulWidget {
   const BillSplitterScreen({super.key});
@@ -23,6 +27,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
   final _descController = TextEditingController();
   // REMOVED: _participantsController
   String? _editingExpenseId;
+  bool _showAllExpenses = false;
 
   @override
   void dispose() {
@@ -38,9 +43,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
 
 
   void _showSettleDialog(BuildContext context, WidgetRef ref, SmartSettlement settlement, String currency) {
-    if (settlement.isPaid) return;
-
-    final amountController = TextEditingController(text: settlement.amount.toStringAsFixed(2));
+    // if (settlement.isPaid) return; // Removed as settled items won't appear
 
     showDialog(
       context: context,
@@ -50,15 +53,17 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${settlement.fromPersonName} pays ${settlement.toPersonName}'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: amountController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Amount',
-                prefixText: currency,
-                border: const OutlineInputBorder(),
+            Text(
+              '${settlement.fromPersonName} pays ${settlement.toPersonName}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '$currency${settlement.amount.toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
           ],
@@ -70,19 +75,17 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
           ),
           FilledButton.icon(
             onPressed: () {
-              final amount = double.tryParse(amountController.text);
-              if (amount != null && amount > 0) {
-                ref.read(paymentsProvider.notifier).addPayment(
-                  fromPersonId: settlement.fromPersonId,
-                  toPersonId: settlement.toPersonId,
-                  amount: amount,
-                  note: 'Settlement',
-                );
-                Navigator.pop(ctx);
-              }
+              ref.read(paymentsProvider.notifier).addPayment(
+                fromPersonId: settlement.fromPersonId,
+                toPersonId: settlement.toPersonId,
+                amount: settlement.amount,
+                note: 'Settlement',
+              );
+              ref.read(tripsProvider.notifier).refresh();
+              Navigator.pop(ctx);
             },
             icon: const Icon(Icons.check),
-            label: const Text('Record Payment'),
+            label: const Text('Mark as Paid'),
           ),
         ],
       ),
@@ -246,6 +249,115 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
     }
   }
 
+  void _showParticipantsOptions(Trip trip) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Manage Participants',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _actionButton(
+                  icon: Icons.person_add,
+                  label: 'Manual Add',
+                  color: Colors.blue.shade100,
+                  iconColor: Colors.blue.shade700,
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ParticipantsScreen()),
+                    );
+                  },
+                ),
+                _actionButton(
+                  icon: Icons.contacts,
+                  label: 'From Contacts',
+                  color: Colors.green.shade100,
+                  iconColor: Colors.green.shade700,
+                  onTap: () async {
+                    Navigator.pop(context); // Close sheet first
+                    await _pickContact();
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color iconColor,
+    required VoidCallback onTap,
+  }) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: iconColor, size: 30),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+
+
+  Future<void> _pickContact() async {
+    final currentPeople = ref.read(peopleProvider).value ?? [];
+    final excludedNames = currentPeople.map((p) => p.name).toList();
+    final excludedPhones = currentPeople
+        .map((p) => p.phoneNumber)
+        .where((p) => p != null)
+        .cast<String>()
+        .toList();
+
+    final result = await Navigator.push<List<Map<String, String?>>>(
+      context, 
+      MaterialPageRoute(
+        builder: (_) => ContactPickerScreen(
+          excludedNames: excludedNames,
+          excludedPhoneNumbers: excludedPhones,
+        ),
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      await ref.read(peopleProvider.notifier).addPeople(result);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Added ${result.length} participants')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -364,9 +476,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: GestureDetector(
-                                          onTap: () => Navigator.of(context).push(
-                                            MaterialPageRoute(builder: (_) => const ParticipantsScreen()),
-                                          ),
+                                          onTap: () => _showParticipantsOptions(currentTrip),
                                           child: Text(
                                             'Total People:',
                                             style: theme.textTheme.titleMedium?.copyWith(
@@ -376,19 +486,15 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                           ),
                                         ),
                                       ),
-                                      Expanded(
-                                        child: GestureDetector(
-                                          onTap: () => Navigator.of(context).push(
-                                            MaterialPageRoute(builder: (_) => const ParticipantsScreen()),
-                                          ),
-                                          child: Text(
-                                            currentTrip.totalParticipants.toString(),
-                                            textAlign: TextAlign.center,
-                                            style: const TextStyle(
-                                              color: Colors.black,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 24, // Slightly larger for visibility
-                                            ),
+                                      GestureDetector(
+                                        onTap: () => _showParticipantsOptions(currentTrip),
+                                        child: Text(
+                                          currentTrip.totalParticipants.toString(),
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            color: Colors.black,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 24, 
                                           ),
                                         ),
                                       ),
@@ -428,16 +534,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                         // Navigation Buttons Row
                         Row(
                           children: [
-                            Expanded(
-                              child: _navButton(
-                                icon: Icons.group,
-                                label: 'Participants',
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const ParticipantsScreen()),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
+
                             Expanded(
                               child: _navButton(
                                 icon: Icons.history,
@@ -498,61 +595,63 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                     Expanded(
                                       flex: 3,
                                       child: peopleAsync.when(
-                                        data: (people) => Autocomplete<String>(
-                                          optionsBuilder: (v) => v.text == ''
-                                              ? const Iterable<String>.empty()
-                                              : people
-                                                  .where((p) => p.name
-                                                      .toLowerCase()
-                                                      .contains(v.text.toLowerCase()))
-                                                  .map((p) => p.name),
-                                          optionsViewBuilder: (ctx, onSel, opts) => Align(
-                                            alignment: Alignment.topLeft,
-                                            child: Material(
-                                              elevation: 4.0,
-                                              borderRadius: BorderRadius.circular(16),
-                                              color: theme.cardColor,
-                                              child: ConstrainedBox(
-                                                constraints: const BoxConstraints(
-                                                  maxHeight: 200,
-                                                  maxWidth: 250,
-                                                ),
-                                                child: ListView.builder(
-                                                  padding: EdgeInsets.zero,
-                                                  shrinkWrap: true,
-                                                  itemCount: opts.length,
-                                                  itemBuilder: (ctx, i) {
-                                                    final opt = opts.elementAt(i);
-                                                    return InkWell(
-                                                      onTap: () => onSel(opt),
-                                                      borderRadius: BorderRadius.circular(16),
-                                                      child: Padding(
-                                                        padding: const EdgeInsets.all(16.0),
-                                                        child: Text(opt),
-                                                      ),
-                                                    );
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          onSelected: (s) => _personController.text = s,
-                                          fieldViewBuilder: (ctx, ctrl, node, _) {
-                                            if (_personController.text != ctrl.text) {
-                                              ctrl.text = _personController.text;
-                                            }
-                                            ctrl.addListener(() => _personController.text = ctrl.text);
-                                            return TextField(
-                                              controller: ctrl,
-                                              focusNode: node,
-                                              decoration: const InputDecoration(
-                                                labelText: 'Payer Name',
-                                                hintText: 'e.g. John',
+                                        data: (people) {
+                                          if (people.isEmpty) {
+                                            return const TextField(
+                                              enabled: false,
+                                              decoration: InputDecoration(
+                                                labelText: 'Payer',
+                                                hintText: 'Add participants first',
                                                 prefixIcon: Icon(Icons.person_outline, size: 18),
                                               ),
                                             );
-                                          },
-                                        ),
+                                          }
+                                            return DropdownButtonFormField<String>(
+                                              value: people.any((p) => p.name == _personController.text)
+                                                  ? _personController.text
+                                                  : null,
+                                              decoration: InputDecoration(
+                                                labelText: 'Payer',
+                                                prefixIcon: const Icon(Icons.person_outline, size: 18),
+                                                contentPadding: const EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 16,
+                                                ),
+                                                border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(16),
+                                                  borderSide: BorderSide.none,
+                                                ),
+                                                enabledBorder: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(16),
+                                                  borderSide: BorderSide.none,
+                                                ),
+                                                focusedBorder: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(16),
+                                                  borderSide: BorderSide(
+                                                    color: theme.colorScheme.primary,
+                                                    width: 2,
+                                                  ),
+                                                ),
+                                                filled: true,
+                                                fillColor: theme.inputDecorationTheme.fillColor,
+                                              ),
+                                              hint: const Text('Select payer'),
+                                              isExpanded: true,
+                                              items: people.map((person) {
+                                                return DropdownMenuItem<String>(
+                                                  value: person.name,
+                                                  child: Text(person.name, overflow: TextOverflow.ellipsis),
+                                                );
+                                              }).toList(),
+                                              onChanged: (value) {
+                                                if (value != null) {
+                                                  setState(() {
+                                                    _personController.text = value;
+                                                  });
+                                                }
+                                              },
+                                            );
+                                        },
                                         loading: () => const TextField(
                                           enabled: false,
                                           decoration: InputDecoration(labelText: 'Loading...'),
@@ -628,12 +727,37 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                       return const SliverToBoxAdapter(child: SizedBox.shrink());
                     }
 
+                    final displayedExpenses = _showAllExpenses 
+                        ? expenses 
+                        : expenses.take(3).toList();
+                    final hasMore = expenses.length > 3;
+
                     return SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
-                            final expense = expenses[index];
+                            // Show More/Less button at the end
+                            if (hasMore && index == displayedExpenses.length) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: TextButton.icon(
+                                  onPressed: () {
+                                    setState(() {
+                                      _showAllExpenses = !_showAllExpenses;
+                                    });
+                                  },
+                                  icon: Icon(_showAllExpenses 
+                                      ? Icons.expand_less 
+                                      : Icons.expand_more),
+                                  label: Text(_showAllExpenses 
+                                      ? 'Show Less' 
+                                      : 'Show ${expenses.length - 3} More'),
+                                ),
+                              );
+                            }
+
+                            final expense = displayedExpenses[index];
                             return peopleAsync.when(
                               data: (people) {
                                 final payerName = people
@@ -729,7 +853,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                               error: (_, __) => const SizedBox.shrink(),
                             );
                           },
-                          childCount: expenses.length,
+                          childCount: displayedExpenses.length + (hasMore ? 1 : 0),
                         ),
                       ),
                     );
@@ -847,7 +971,7 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                               
                               return Column(
                                 children: smartSettlements.map((s) {
-                                  final color = s.isPaid ? Colors.green : const Color(0xFFef4444);
+                                  final color = const Color(0xFFef4444); // Always red (debt)
                                   
                                   return Card(
                                     margin: const EdgeInsets.only(bottom: 8),
@@ -861,28 +985,27 @@ class _BillSplitterScreenState extends ConsumerState<BillSplitterScreen> {
                                         backgroundColor: color.withOpacity(0.2),
                                         radius: 16,
                                         child: Icon(
-                                          s.isPaid ? Icons.check : Icons.arrow_forward,
+                                          Icons.arrow_forward,
                                           color: color,
                                           size: 16,
                                         ),
                                       ),
                                       title: Text(
                                         '${s.fromPersonName} → ${s.toPersonName}',
-                                        style: TextStyle(
+                                        style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 14,
-                                          decoration: s.isPaid ? TextDecoration.lineThrough : null,
                                         ),
                                       ),
-                                      subtitle: s.isPaid 
-                                          ? Text('Paid', style: TextStyle(color: Colors.green, fontSize: 12)) 
-                                          : Text('Tap to settle', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                                      subtitle: const Text(
+                                        'Tap to settle',
+                                        style: TextStyle(color: Colors.grey, fontSize: 11),
+                                      ),
                                       trailing: Text(
                                         '${currentTrip.currency}${s.amount.toStringAsFixed(2)}',
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           color: color,
-                                          decoration: s.isPaid ? TextDecoration.lineThrough : null,
                                         ),
                                       ),
                                     ),

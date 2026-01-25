@@ -24,7 +24,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 4,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -35,6 +35,18 @@ class DatabaseService {
       await db.execute('ALTER TABLE trips ADD COLUMN iconCodePoint INTEGER DEFAULT 58688');
       await db.execute('ALTER TABLE trips ADD COLUMN colorValue INTEGER DEFAULT 4280391411');
     }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE people ADD COLUMN phone_number TEXT');
+    }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE frequent_people (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          phone_number TEXT
+        )
+      ''');
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -42,6 +54,15 @@ class DatabaseService {
     const textType = 'TEXT NOT NULL';
     const intType = 'INTEGER NOT NULL';
     const realType = 'REAL NOT NULL';
+    
+    // Frequent People table (New in v4)
+    await db.execute('''
+      CREATE TABLE frequent_people (
+        id $idType,
+        name $textType,
+        phone_number TEXT
+      )
+    ''');
 
     // Trips table
     await db.execute('''
@@ -64,6 +85,7 @@ class DatabaseService {
         id $idType,
         name $textType,
         tripId $textType,
+        phone_number TEXT,
         FOREIGN KEY (tripId) REFERENCES trips (id) ON DELETE CASCADE
       )
     ''');
@@ -216,6 +238,52 @@ class DatabaseService {
       where: 'id = ?',
       whereArgs: [person.id],
     );
+  }
+
+  /// Fetches unique people from all trips, useful for "Recent/Frequent" contacts.
+  Future<List<Person>> getDistinctPeople() async {
+    final db = await instance.database;
+    // We want unique Names (and phone where available). 
+    // Since IDs are unique per trip-person, we group by name.
+    final result = await db.rawQuery('''
+      SELECT * FROM people 
+      WHERE id NOT LIKE 'anonymous_%'
+      GROUP BY name, phone_number
+      ORDER BY name ASC
+    ''');
+    
+    return result.map((json) => Person.fromMap(json)).toList();
+  }
+
+  // Frequent People CRUD
+  Future<void> addFrequentPerson(Person person) async {
+    final db = await instance.database;
+    // We only care about name and phone for the "template"
+    await db.insert('frequent_people', {
+      'id': person.id,
+      'name': person.name,
+      'phone_number': person.phoneNumber,
+    });
+  }
+
+  Future<List<Person>> getFrequentPeople() async {
+    final db = await instance.database;
+    final result = await db.query(
+      'frequent_people',
+      orderBy: 'name ASC',
+    );
+    // Map them to Person objects. Note: tripId will be empty or dummy since they are global templates.
+    return result.map((json) => Person(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      tripId: '', // Dummy
+      phoneNumber: json['phone_number'] as String?,
+    )).toList();
+  }
+
+  Future<void> deleteFrequentPerson(String id) async {
+    final db = await instance.database;
+    await db.delete('frequent_people', where: 'id = ?', whereArgs: [id]);
   }
 
   // Expense CRUD operations
